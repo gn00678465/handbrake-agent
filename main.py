@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Dict, Any
 from tools.video_info import get_video_info_ffprobe
 from tools.transcoder import transcode_with_ffmpeg, transcode_with_handbrake
-from tools.quality import calculate_vmaf, calculate_psnr_ssim, evaluate_quality
+from tools.quality import calculate_vmaf, calculate_psnr_ssim, evaluate_quality, diagnose_vmaf_params
 from tools.ai_analyzer import analyze_video
 
 class VideoTranscoder:
@@ -18,7 +18,8 @@ class VideoTranscoder:
         quality_method: str = 'psnr_ssim',
         preview_mode: bool = False,
         preview_duration: int = 30,
-        auto_confirm: bool = False
+        auto_confirm: bool = False,
+        vmaf_feedback: Dict[str, Any] = None
     ):
         """
         完整的影片處理流程
@@ -50,7 +51,7 @@ class VideoTranscoder:
         # 2. LLM 分析
         print("\n[2/5] 使用 AI 分析最佳轉碼參數 (GitHub Copilot SDK)...")
         try:
-            params = analyze_video(video_info, file_size_mb)
+            params = analyze_video(video_info, file_size_mb, vmaf_feedback)
         except Exception as e:
             print(f"AI 分析失敗: {e}")
             return
@@ -108,11 +109,19 @@ class VideoTranscoder:
                     quality_scores = calculate_psnr_ssim(input_path, str(output_path))
                 
                 evaluation = evaluate_quality(quality_scores)
-                
+
                 print("\n品質評估結果：")
                 for detail in evaluation['details']:
                     print(f"  {detail}")
                 print(f"  整體評價: {evaluation['overall']}")
+
+                # VMAF 分數不佳時，從 vmaf.json sub-metrics 給出參數調整建議
+                if quality_method == 'vmaf' and quality_scores.get('vmaf', 100) < 70:
+                    diagnosis = diagnose_vmaf_params()
+                    if diagnosis['available'] and diagnosis['suggestions']:
+                        print("\n[VMAF 診斷] 參數調整建議：")
+                        for s in diagnosis['suggestions']:
+                            print(f"  - {s}")
                 
             except Exception as e:
                 print(f"\n品質驗證失敗: {e}")
@@ -213,6 +222,11 @@ def main():
         action="store_true",
         help="自動確認執行轉碼，不需要手動輸入 y/n"
     )
+    parser.add_argument(
+        "--vmaf-feedback",
+        metavar="VMAF_JSON",
+        help="提供上次轉碼的 vmaf.json 路徑，讓 AI 依據品質指標調整參數建議"
+    )
 
     args = parser.parse_args()
 
@@ -220,6 +234,21 @@ def main():
 
     method = 'vmaf' if args.vmaf else 'psnr_ssim'
     verify = not args.no_verify
+
+    # 讀取 vmaf feedback 檔案（若有提供）
+    vmaf_feedback = None
+    if args.vmaf_feedback:
+        import json as _json
+        try:
+            with open(args.vmaf_feedback, "r", encoding="utf-8") as f:
+                vmaf_json = _json.load(f)
+            vmaf_feedback = vmaf_json.get("pooled_metrics")
+            if vmaf_feedback:
+                print(f"[VMAF 反饋] 讀取 {args.vmaf_feedback}，AI 將依據品質指標調整參數")
+            else:
+                print(f"[VMAF 反饋] {args.vmaf_feedback} 中找不到 pooled_metrics，使用預設分析")
+        except Exception as e:
+            print(f"[VMAF 反饋] 無法讀取 {args.vmaf_feedback}: {e}，使用預設分析")
 
     if args.batch:
         transcoder.batch_process_videos(
@@ -239,7 +268,8 @@ def main():
             quality_method=method,
             preview_mode=args.preview,
             preview_duration=args.preview_duration,
-            auto_confirm=args.yes
+            auto_confirm=args.yes,
+            vmaf_feedback=vmaf_feedback
         )
 
 if __name__ == "__main__":

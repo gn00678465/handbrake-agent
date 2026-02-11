@@ -5,27 +5,38 @@ from typing import Dict, Any
 from copilot import CopilotClient
 
 
-def analyze_video(video_info: Dict[str, Any], file_size_mb: float) -> Dict[str, Any]:
+def analyze_video(
+    video_info: Dict[str, Any],
+    file_size_mb: float,
+    vmaf_data: Dict[str, Any] = None
+) -> Dict[str, Any]:
     """
     使用 GitHub Copilot SDK 分析影片並建議最佳轉碼參數
 
     Args:
         video_info: 影片資訊字典（來自 ffprobe）
         file_size_mb: 影片檔案大小（MB）
+        vmaf_data: 上次轉碼的 vmaf.json pooled_metrics（可選）；
+                   提供時 AI 會依據品質指標給出調整後的參數
 
     Returns:
         包含建議參數的字典
     """
-    return asyncio.run(_analyze_video_async(video_info, file_size_mb))
+    return asyncio.run(_analyze_video_async(video_info, file_size_mb, vmaf_data))
 
 
-async def _analyze_video_async(video_info: Dict[str, Any], file_size_mb: float) -> Dict[str, Any]:
+async def _analyze_video_async(
+    video_info: Dict[str, Any],
+    file_size_mb: float,
+    vmaf_data: Dict[str, Any] = None
+) -> Dict[str, Any]:
     """
     異步分析影片並建議最佳轉碼參數
 
     Args:
         video_info: 影片資訊字典（來自 ffprobe）
         file_size_mb: 影片檔案大小（MB）
+        vmaf_data: 上次轉碼的 vmaf.json pooled_metrics（可選）
 
     Returns:
         包含建議參數的字典
@@ -42,7 +53,7 @@ async def _analyze_video_async(video_info: Dict[str, Any], file_size_mb: float) 
         })
 
         # 構建分析提示
-        prompt = _build_analysis_prompt(video_info, file_size_mb)
+        prompt = _build_analysis_prompt(video_info, file_size_mb, vmaf_data)
 
         # 收集響應
         done = asyncio.Event()
@@ -78,13 +89,18 @@ async def _analyze_video_async(video_info: Dict[str, Any], file_size_mb: float) 
         raise RuntimeError(f"AI 分析失敗: {e}")
 
 
-def _build_analysis_prompt(video_info: Dict[str, Any], file_size_mb: float) -> str:
+def _build_analysis_prompt(
+    video_info: Dict[str, Any],
+    file_size_mb: float,
+    vmaf_data: Dict[str, Any] = None
+) -> str:
     """
     構建 AI 分析提示詞
 
     Args:
         video_info: 影片資訊
         file_size_mb: 檔案大小（MB）
+        vmaf_data: vmaf.json 的 pooled_metrics（可選）
 
     Returns:
         提示詞字串
@@ -144,6 +160,39 @@ def _build_analysis_prompt(video_info: Dict[str, Any], file_size_mb: float) -> s
 ```
 
 只回傳 JSON，不要有其他文字。"""
+
+    # 有 VMAF 資料時，在 prompt 末尾插入反饋區段，要求 AI 依指標調整參數
+    if vmaf_data:
+        def m(key: str) -> str:
+            v = vmaf_data.get(key, {})
+            mean = v.get("mean", None) if isinstance(v, dict) else None
+            return f"{mean:.4f}" if mean is not None else "N/A"
+
+        vmaf_section = f"""
+
+---
+## 上次轉碼的 VMAF 品質反饋
+
+以下是上次轉碼後 libvmaf 測量的 pooled_metrics（平均值），請依據這些數值調整參數：
+
+| 指標 | 數值 | 意義 |
+|------|------|------|
+| VMAF 總分 | {m("vmaf")} | 0-100，越高越好，<70 表示需要調整 |
+| ADM2（邊緣保留） | {m("integer_adm2")} | <0.88 表示邊緣模糊，建議 slower preset |
+| ADM scale2（中細節）| {m("integer_adm_scale2")} | <0.85 表示中等細節損失 |
+| ADM scale3（細部細節）| {m("integer_adm_scale3")} | <0.85 表示精細細節損失 |
+| VIF scale0（blocking）| {m("integer_vif_scale0")} | <0.70 表示有方塊感/色帶，建議降低 CRF |
+| VIF scale3（細部紋理）| {m("integer_vif_scale3")} | <0.85 表示紋理損失 |
+| Motion2（動態量） | {m("integer_motion2")} | >4 表示高動態，>8 表示極高動態 |
+
+**請根據以上數值，在原本的建議基礎上進行調整，使 VMAF 分數達到 80 以上。**
+調整優先順序：
+1. VIF scale0 偏低 → 降低 CRF（每次 2-3）
+2. ADM2 偏低 → 改用 slow 或 slower preset
+3. 高動態（motion2 > 4）→ 同時降低 CRF 與改用 slower preset
+4. 若各指標接近正常但 VMAF 仍低 → 可能是來源素材限制，降低 CRF 2 即可"""
+
+        prompt = prompt.replace("只回傳 JSON，不要有其他文字。", vmaf_section + "\n\n只回傳 JSON，不要有其他文字。")
 
     return prompt
 

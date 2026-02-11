@@ -124,6 +124,103 @@ def calculate_psnr_ssim(reference_path: str, distorted_path: str) -> Dict[str, f
         raise RuntimeError(f"品質計算失敗: {e.stderr}")
 
 
+def diagnose_vmaf_params(vmaf_json_path: str = "vmaf.json") -> Dict[str, Any]:
+    """
+    讀取 vmaf.json 的 sub-metrics，診斷品質問題並給出具體的參數調整建議。
+
+    VMAF sub-metrics 說明：
+      ADM2 / ADM scale0-3 : 邊緣/細節保留度（Anisotropic Distortion Measure）
+      VIF scale0-3        : 視覺資訊保真度（Visual Information Fidelity）
+        - scale0 = 粗粒度（對 blocking/banding 最敏感）
+        - scale3 = 細粒度（對細部紋理最敏感）
+      motion / motion2    : 動態量（值越高代表畫面越動態）
+
+    Args:
+        vmaf_json_path: vmaf.json 路徑
+
+    Returns:
+        包含診斷結果與建議的字典
+    """
+    try:
+        with open(vmaf_json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return {"available": False, "suggestions": []}
+
+    pooled = data.get("pooled_metrics", {})
+    if not pooled:
+        return {"available": False, "suggestions": []}
+
+    def mean(key: str) -> float:
+        return pooled.get(key, {}).get("mean", 1.0)
+
+    vmaf_score = mean("vmaf")
+    adm2       = mean("integer_adm2")
+    adm_s2     = mean("integer_adm_scale2")
+    adm_s3     = mean("integer_adm_scale3")
+    vif_s0     = mean("integer_vif_scale0")
+    vif_s3     = mean("integer_vif_scale3")
+    motion2    = mean("integer_motion2")
+
+    suggestions = []
+
+    # --- blocking / banding (VIF scale0 最敏感) ---
+    if vif_s0 < 0.55:
+        suggestions.append(
+            f"VIF-scale0={vif_s0:.3f} (嚴重) -> 明顯方塊感/色帶，建議 CRF 降低 4-6（例如 CRF 23 -> 17-19）"
+        )
+    elif vif_s0 < 0.70:
+        suggestions.append(
+            f"VIF-scale0={vif_s0:.3f} -> 輕度 blocking/banding，建議 CRF 降低 2-3"
+        )
+
+    # --- 邊緣模糊 (ADM2) ---
+    if adm2 < 0.82:
+        suggestions.append(
+            f"ADM2={adm2:.3f} (嚴重) -> 邊緣嚴重模糊，建議降低 CRF 且改用 slower/veryslow preset"
+        )
+    elif adm2 < 0.88:
+        suggestions.append(
+            f"ADM2={adm2:.3f} -> 輕度邊緣模糊，建議改用 slow 或 slower preset"
+        )
+
+    # --- 細節紋理損失 (ADM scale2/3 + VIF scale3) ---
+    if adm_s3 < 0.82 or vif_s3 < 0.80:
+        suggestions.append(
+            f"ADM-scale3={adm_s3:.3f} / VIF-scale3={vif_s3:.3f} -> 細部紋理損失，建議 slower preset 或 CRF -2"
+        )
+    elif adm_s2 < 0.85:
+        suggestions.append(
+            f"ADM-scale2={adm_s2:.3f} -> 中等細節損失，建議改用 slow preset"
+        )
+
+    # --- 高動態場景 ---
+    if motion2 > 8.0:
+        suggestions.append(
+            f"motion2={motion2:.2f} (極高動態) -> 動態模糊/拖影，建議 CRF -3 或增加參考幀（--encoder-option ref=5）"
+        )
+    elif motion2 > 4.0:
+        suggestions.append(
+            f"motion2={motion2:.2f} (高動態) -> 動態場景品質不足，建議 CRF -2"
+        )
+
+    # --- 無明顯問題但分數仍低 ---
+    if not suggestions and vmaf_score < 70:
+        suggestions.append(
+            "各 sub-metrics 無明顯異常，低分可能源於來源素材本身已有壓縮損失（generation loss）"
+        )
+
+    return {
+        "available": True,
+        "vmaf": vmaf_score,
+        "adm2": adm2,
+        "vif_scale0": vif_s0,
+        "vif_scale3": vif_s3,
+        "motion2": motion2,
+        "suggestions": suggestions,
+    }
+
+
 def evaluate_quality(scores: Dict[str, float]) -> Dict[str, Any]:
     """
     評估品質分數並給出建議

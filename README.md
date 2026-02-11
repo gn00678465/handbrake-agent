@@ -339,6 +339,9 @@ python main.py input.mp4 --yes
 
 # 非互動式執行（CI/腳本環境適用）
 python main.py input.mp4 --preview --ffmpeg --no-verify --yes
+
+# AI 參數精調：提供上次的 vmaf.json，讓 AI 依品質指標調整參數
+python main.py input.mp4 --preview --yes --vmaf-feedback vmaf.json
 ```
 
 ### 完整參數說明
@@ -355,6 +358,7 @@ python main.py --help
   --preview                  預覽模式：只轉換開頭部分以快速測試參數
   --preview-duration SECONDS 預覽模式的時長（秒），預設為 30 秒
   --yes, -y                  自動確認執行轉碼，不需要手動輸入 y/n
+  --vmaf-feedback VMAF_JSON  提供上次轉碼的 vmaf.json，讓 AI 依品質指標調整參數建議
 ```
 
 ### 工作流程
@@ -365,6 +369,38 @@ python main.py --help
 4. **執行轉碼** → 使用選定的工具（FFmpeg 或 HandBrake）進行轉碼
 5. **品質驗證** → 計算轉碼後影片的品質指標
 6. **結果報告** → 顯示壓縮率和品質評估結果
+
+### AI 參數精調工作流程（`--vmaf-feedback`）
+
+當 VMAF 分數不佳時，可將 `vmaf.json` 回饋給 AI，讓它依據 sub-metrics 自動調整參數：
+
+```bash
+# 第一輪：使用預設參數轉碼並產生 vmaf.json
+hba video.mp4 --preview --yes --vmaf
+
+# 查看 VMAF 診斷建議（分數 < 70 時自動顯示）
+# 範例輸出：
+#   [VMAF 診斷] 參數調整建議：
+#     - VIF-scale0=0.644 -> 輕度 blocking/banding，建議 CRF 降低 2-3
+#     - ADM2=0.878 -> 輕度邊緣模糊，建議改用 slow 或 slower preset
+
+# 第二輪：帶入 vmaf.json，AI 自動依指標調整參數
+hba video.mp4 --preview --yes --vmaf --vmaf-feedback vmaf.json
+
+# 確認改善後，移除 --preview 進行完整轉碼
+hba video.mp4 --yes --vmaf --vmaf-feedback vmaf.json
+```
+
+**AI 依據 VMAF sub-metrics 的調整邏輯：**
+
+| Sub-metric | 閾值 | 問題 | AI 調整方向 |
+|-----------|------|------|------------|
+| VIF scale0 | < 0.70 | 方塊感／色帶 | CRF 降低 2-3 |
+| ADM2 | < 0.88 | 邊緣模糊 | 改用 slow/slower preset |
+| ADM scale3 | < 0.85 | 細部細節損失 | slower preset 或 CRF -2 |
+| motion2 | > 4.0 | 高動態場景 | CRF -2 + slower preset |
+
+未提供 `--vmaf-feedback` 時，行為與原本完全相同，使用影片資訊進行預設分析。
 
 ---
 

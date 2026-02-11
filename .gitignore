@@ -216,3 +216,11 @@ __marimo__/
 .streamlit/secrets.toml
 
 **/*.mp4
+
+# VMAF / ffprobe 產生的暫存檔
+vmaf.json
+vmaf_*.json
+*_vmaf.json
+probe_out.json
+test_output.txt
+test_hb_vmaf*.txt
