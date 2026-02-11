@@ -1,0 +1,22 @@
+# HandBrake Agent - Python Dependencies
+#
+# Install with uv (recommended):
+#   uv pip install -r requirements.txt
+#
+# Or with pip:
+#   pip install -r requirements.txt
+
+# GitHub Copilot SDK for AI-powered video analysis
+github-copilot-sdk==0.1.23
+
+# Note: For deterministic builds, use requirements.lock:
+#   uv pip install -r requirements.lock
+#
+# System Requirements (install separately):
+# - ffmpeg: For video processing and quality metrics
+# - ffprobe: For video information extraction (usually comes with ffmpeg)
+# - HandBrakeCLI: For video transcoding (optional, can use ffmpeg instead)
+#
+# Installation guides:
+# - ffmpeg: https://ffmpeg.org/download.html
+# - HandBrake CLI: https://handbrake.fr/downloads.php
