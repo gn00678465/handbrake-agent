@@ -2,6 +2,8 @@
 import subprocess
 import json
 import re
+from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any
 
 
@@ -30,12 +32,20 @@ def calculate_vmaf(reference_path: str, distorted_path: str) -> Dict[str, float]
     # 取得 distorted 時長，限制 reference 只比對相同長度，避免 VMAF 對空幀計分
     distorted_duration = _get_duration(distorted_path)
 
+    # 以 timestamp 命名，避免多次執行互相覆蓋
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    vmaf_json_path = str(Path(distorted_path).parent / f"vmaf_{timestamp}.json")
+
     cmd = [
         "ffmpeg",
         "-i", distorted_path,
         "-t", str(distorted_duration),
         "-i", reference_path,
-        "-lavfi", "[0:v]scale=1920:1080:flags=bicubic[dis];[1:v]scale=1920:1080:flags=bicubic[ref];[dis][ref]libvmaf=log_fmt=json:log_path=vmaf.json",
+        "-lavfi", (
+            "[0:v]scale=1920:1080:flags=bicubic[dis];"
+            "[1:v]scale=1920:1080:flags=bicubic[ref];"
+            f"[dis][ref]libvmaf=log_fmt=json:log_path={vmaf_json_path}"
+        ),
         "-f", "null",
         "-"
     ]
@@ -43,12 +53,15 @@ def calculate_vmaf(reference_path: str, distorted_path: str) -> Dict[str, float]
     try:
         subprocess.run(cmd, check=True, capture_output=True)
 
-        with open("vmaf.json", "r") as f:
+        with open(vmaf_json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
             pooled = data.get("pooled_metrics", {})
 
+        print(f"VMAF 結果已儲存至：{vmaf_json_path}")
+
         scores = {
             "vmaf": pooled.get("vmaf", {}).get("mean", 0),
+            "_vmaf_json_path": vmaf_json_path,  # 供 main.py 診斷使用
         }
         # 僅在 JSON 中確實存在時才回傳（libvmaf 預設不計算 PSNR/SSIM）
         if "psnr" in pooled:
@@ -124,7 +137,7 @@ def calculate_psnr_ssim(reference_path: str, distorted_path: str) -> Dict[str, f
         raise RuntimeError(f"品質計算失敗: {e.stderr}")
 
 
-def diagnose_vmaf_params(vmaf_json_path: str = "vmaf.json") -> Dict[str, Any]:
+def diagnose_vmaf_params(vmaf_json_path: str) -> Dict[str, Any]:
     """
     讀取 vmaf.json 的 sub-metrics，診斷品質問題並給出具體的參數調整建議。
 

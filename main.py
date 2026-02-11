@@ -107,7 +107,7 @@ class VideoTranscoder:
                     quality_scores = calculate_vmaf(input_path, str(output_path))
                 else:
                     quality_scores = calculate_psnr_ssim(input_path, str(output_path))
-                
+
                 evaluation = evaluate_quality(quality_scores)
 
                 print("\n品質評估結果：")
@@ -115,13 +115,16 @@ class VideoTranscoder:
                     print(f"  {detail}")
                 print(f"  整體評價: {evaluation['overall']}")
 
-                # VMAF 分數不佳時，從 vmaf.json sub-metrics 給出參數調整建議
+                # VMAF 分數不佳時，從 vmaf_timestamp.json sub-metrics 給出參數調整建議
                 if quality_method == 'vmaf' and quality_scores.get('vmaf', 100) < 70:
-                    diagnosis = diagnose_vmaf_params()
-                    if diagnosis['available'] and diagnosis['suggestions']:
-                        print("\n[VMAF 診斷] 參數調整建議：")
-                        for s in diagnosis['suggestions']:
-                            print(f"  - {s}")
+                    vmaf_json_path = quality_scores.get('_vmaf_json_path', '')
+                    if vmaf_json_path:
+                        diagnosis = diagnose_vmaf_params(vmaf_json_path)
+                        if diagnosis['available'] and diagnosis['suggestions']:
+                            print("\n[VMAF 診斷] 參數調整建議：")
+                            for s in diagnosis['suggestions']:
+                                print(f"  - {s}")
+                            print(f"\n  下次執行加入：--vmaf-feedback \"{vmaf_json_path}\"")
                 
             except Exception as e:
                 print(f"\n品質驗證失敗: {e}")
