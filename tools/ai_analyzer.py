@@ -8,7 +8,9 @@ from copilot import CopilotClient
 def analyze_video(
     video_info: Dict[str, Any],
     file_size_mb: float,
-    vmaf_data: Dict[str, Any] = None
+    vmaf_data: Dict[str, Any] = None,
+    model: str = "gpt5-mini",
+    extra_prompt: str = None
 ) -> Dict[str, Any]:
     """
     使用 GitHub Copilot SDK 分析影片並建議最佳轉碼參數
@@ -18,17 +20,21 @@ def analyze_video(
         file_size_mb: 影片檔案大小（MB）
         vmaf_data: 上次轉碼的 vmaf.json pooled_metrics（可選）；
                    提供時 AI 會依據品質指標給出調整後的參數
+        model: 使用的 AI 模型名稱，預設為 gpt5-mini
+        extra_prompt: 使用者自訂的額外提示詞，會附加在原始 prompt 後面
 
     Returns:
         包含建議參數的字典
     """
-    return asyncio.run(_analyze_video_async(video_info, file_size_mb, vmaf_data))
+    return asyncio.run(_analyze_video_async(video_info, file_size_mb, vmaf_data, model, extra_prompt))
 
 
 async def _analyze_video_async(
     video_info: Dict[str, Any],
     file_size_mb: float,
-    vmaf_data: Dict[str, Any] = None
+    vmaf_data: Dict[str, Any] = None,
+    model: str = "gpt5-mini",
+    extra_prompt: str = None
 ) -> Dict[str, Any]:
     """
     異步分析影片並建議最佳轉碼參數
@@ -37,6 +43,8 @@ async def _analyze_video_async(
         video_info: 影片資訊字典（來自 ffprobe）
         file_size_mb: 影片檔案大小（MB）
         vmaf_data: 上次轉碼的 vmaf.json pooled_metrics（可選）
+        model: 使用的 AI 模型名稱
+        extra_prompt: 使用者自訂的額外提示詞
 
     Returns:
         包含建議參數的字典
@@ -48,12 +56,12 @@ async def _analyze_video_async(
     try:
         # 創建對話會話
         session = await client.create_session({
-            "model": "claude-sonnet-4.5",
+            "model": model,
             "streaming": False,
         })
 
         # 構建分析提示
-        prompt = _build_analysis_prompt(video_info, file_size_mb, vmaf_data)
+        prompt = _build_analysis_prompt(video_info, file_size_mb, vmaf_data, extra_prompt)
 
         # 收集響應
         done = asyncio.Event()
@@ -92,7 +100,8 @@ async def _analyze_video_async(
 def _build_analysis_prompt(
     video_info: Dict[str, Any],
     file_size_mb: float,
-    vmaf_data: Dict[str, Any] = None
+    vmaf_data: Dict[str, Any] = None,
+    extra_prompt: str = None
 ) -> str:
     """
     構建 AI 分析提示詞
@@ -101,6 +110,7 @@ def _build_analysis_prompt(
         video_info: 影片資訊
         file_size_mb: 檔案大小（MB）
         vmaf_data: vmaf.json 的 pooled_metrics（可選）
+        extra_prompt: 使用者自訂的額外提示詞，附加在 prompt 末尾（可選）
 
     Returns:
         提示詞字串
@@ -193,6 +203,10 @@ def _build_analysis_prompt(
 4. 若各指標接近正常但 VMAF 仍低 → 可能是來源素材限制，降低 CRF 2 即可"""
 
         prompt = prompt.replace("只回傳 JSON，不要有其他文字。", vmaf_section + "\n\n只回傳 JSON，不要有其他文字。")
+
+    # 附加使用者自訂 prompt
+    if extra_prompt:
+        prompt += f"\n\n---\n## 使用者額外需求\n\n{extra_prompt}"
 
     return prompt
 

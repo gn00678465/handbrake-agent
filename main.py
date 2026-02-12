@@ -19,8 +19,10 @@ class VideoTranscoder:
         preview_mode: bool = False,
         preview_duration: int = 30,
         auto_confirm: bool = False,
-        vmaf_feedback: Dict[str, Any] = None
-    ):
+        vmaf_feedback: Dict[str, Any] = None,
+        model: str = "gpt5-mini",
+        extra_prompt: str = None
+    ) -> Dict[str, Any]:
         """
         完整的影片處理流程
 
@@ -32,6 +34,13 @@ class VideoTranscoder:
             quality_method: 品質驗證方法 ('vmaf' 或 'psnr_ssim')
             preview_mode: 預覽模式，只轉換部分影片
             preview_duration: 預覽模式的時長（秒）
+            auto_confirm: 自動確認轉碼
+            vmaf_feedback: VMAF 反饋資料
+            model: Copilot SDK 使用的 AI 模型名稱
+            extra_prompt: 使用者自訂的額外提示詞
+
+        Returns:
+            包含處理結果的字典（含 vmaf_json_path 等）
         """
         
         input_file = Path(input_path)
@@ -50,8 +59,12 @@ class VideoTranscoder:
         
         # 2. LLM 分析
         print("\n[2/5] 使用 AI 分析最佳轉碼參數 (GitHub Copilot SDK)...")
+        if model != "gpt5-mini":
+            print(f"  使用模型: {model}")
+        if extra_prompt:
+            print(f"  附加 prompt: {extra_prompt[:60]}{'...' if len(extra_prompt) > 60 else ''}")
         try:
-            params = analyze_video(video_info, file_size_mb, vmaf_feedback)
+            params = analyze_video(video_info, file_size_mb, vmaf_feedback, model=model, extra_prompt=extra_prompt)
         except Exception as e:
             print(f"AI 分析失敗: {e}")
             return
@@ -96,10 +109,11 @@ class VideoTranscoder:
         
         if not success:
             print("\n轉碼失敗！")
-            return
-        
+            return {}
+
         # 5. 品質驗證
         quality_scores = None
+        vmaf_json_path = None
         if verify_quality:
             print("\n[4/5] 品質驗證...")
             try:
@@ -116,30 +130,36 @@ class VideoTranscoder:
                 print(f"  整體評價: {evaluation['overall']}")
 
                 # VMAF 分數不佳時，從 vmaf_timestamp.json sub-metrics 給出參數調整建議
-                if quality_method == 'vmaf' and quality_scores.get('vmaf', 100) < 70:
+                if quality_method == 'vmaf':
                     vmaf_json_path = quality_scores.get('_vmaf_json_path', '')
-                    if vmaf_json_path:
+                    if quality_scores.get('vmaf', 100) < 70 and vmaf_json_path:
                         diagnosis = diagnose_vmaf_params(vmaf_json_path)
                         if diagnosis['available'] and diagnosis['suggestions']:
                             print("\n[VMAF 診斷] 參數調整建議：")
                             for s in diagnosis['suggestions']:
                                 print(f"  - {s}")
                             print(f"\n  下次執行加入：--vmaf-feedback \"{vmaf_json_path}\"")
-                
+
             except Exception as e:
                 print(f"\n品質驗證失敗: {e}")
-        
+
         # 6. 顯示結果
         output_file = Path(output_path)
         new_size_mb = output_file.stat().st_size / (1024 * 1024)
         reduction = ((file_size_mb - new_size_mb) / file_size_mb) * 100
-        
+
         print("\n" + "=" * 60)
         print("[5/5] 轉碼完成！")
         print(f"原始大小: {file_size_mb:.2f} MB")
         print(f"新檔大小: {new_size_mb:.2f} MB")
         print(f"壓縮率: {reduction:.1f}%")
         print(f"輸出檔案: {output_path}")
+
+        return {
+            "vmaf_json_path": vmaf_json_path,
+            "quality_scores": quality_scores,
+            "output_path": str(output_path),
+        }
 
     def batch_process_videos(
         self,
@@ -150,7 +170,9 @@ class VideoTranscoder:
         quality_method: str = 'psnr_ssim',
         preview_mode: bool = False,
         preview_duration: int = 30,
-        auto_confirm: bool = False
+        auto_confirm: bool = False,
+        model: str = "gpt5-mini",
+        extra_prompt: str = None
     ):
         """批次處理資料夾中的影片"""
         folder = Path(folder_path)
@@ -175,7 +197,9 @@ class VideoTranscoder:
                     quality_method=quality_method,
                     preview_mode=preview_mode,
                     preview_duration=preview_duration,
-                    auto_confirm=auto_confirm
+                    auto_confirm=auto_confirm,
+                    model=model,
+                    extra_prompt=extra_prompt
                 )
             except Exception as e:
                 print(f"處理失敗：{e}")
@@ -230,6 +254,28 @@ def main():
         metavar="VMAF_JSON",
         help="提供上次轉碼的 vmaf.json 路徑，讓 AI 依據品質指標調整參數建議"
     )
+    parser.add_argument(
+        "--model",
+        default="gpt5-mini",
+        metavar="MODEL",
+        help="指定 Copilot SDK 使用的 AI 模型（預設：gpt5-mini）"
+    )
+    parser.add_argument(
+        "--auto-loop",
+        nargs="?",
+        const=3,
+        type=int,
+        metavar="N",
+        help=(
+            "自動連續執行模式：依序執行 preview + vmaf，第二次起自動帶入上次 vmaf.json。"
+            "不帶數字時預設執行 3 次，帶入數字（例如 --auto-loop 2）則最多執行該次數。"
+        )
+    )
+    parser.add_argument(
+        "--prompt", "-p",
+        metavar="TEXT",
+        help="使用者自訂的額外提示詞，會附加在 AI 分析 prompt 後面"
+    )
 
     args = parser.parse_args()
 
@@ -253,7 +299,65 @@ def main():
         except Exception as e:
             print(f"[VMAF 反饋] 無法讀取 {args.vmaf_feedback}: {e}，使用預設分析")
 
-    if args.batch:
+    if args.auto_loop is not None:
+        # --auto-loop 模式：自動連續執行 preview + vmaf，第二次起帶入上次 vmaf.json
+        max_iterations = args.auto_loop
+        print(f"\n[Auto Loop] 啟動自動迭代模式，最多執行 {max_iterations} 次")
+        print(f"[Auto Loop] 每次均以 preview 模式 + VMAF 驗證執行")
+        print("=" * 60)
+
+        current_vmaf_json = None
+        # 若使用者同時指定了 --vmaf-feedback，第一輪就使用它
+        if args.vmaf_feedback:
+            current_vmaf_json = args.vmaf_feedback
+
+        import json as _json
+
+        for iteration in range(1, max_iterations + 1):
+            print(f"\n{'='*60}")
+            print(f"[Auto Loop] 第 {iteration}/{max_iterations} 次迭代")
+            print(f"{'='*60}")
+
+            # 讀取上次的 vmaf feedback（第一輪若有指定則使用，否則從第二輪開始）
+            loop_vmaf_feedback = None
+            if current_vmaf_json:
+                try:
+                    with open(current_vmaf_json, "r", encoding="utf-8") as f:
+                        vmaf_json_data = _json.load(f)
+                    loop_vmaf_feedback = vmaf_json_data.get("pooled_metrics")
+                    if loop_vmaf_feedback:
+                        print(f"[Auto Loop] 使用 VMAF 反饋: {current_vmaf_json}")
+                    else:
+                        print(f"[Auto Loop] {current_vmaf_json} 中找不到 pooled_metrics，跳過反饋")
+                except Exception as e:
+                    print(f"[Auto Loop] 無法讀取 VMAF 反饋: {e}")
+
+            result = transcoder.process_video(
+                args.input,
+                use_ffmpeg=args.ffmpeg,
+                verify_quality=True,
+                quality_method='vmaf',
+                preview_mode=True,
+                preview_duration=args.preview_duration,
+                auto_confirm=args.yes,
+                vmaf_feedback=loop_vmaf_feedback,
+                model=args.model,
+                extra_prompt=args.prompt
+            )
+
+            # 取得此輪產生的 vmaf.json 路徑，供下一輪使用
+            new_vmaf_path = result.get("vmaf_json_path") if result else None
+            if new_vmaf_path:
+                current_vmaf_json = new_vmaf_path
+                print(f"\n[Auto Loop] 第 {iteration} 次完成，vmaf.json: {current_vmaf_json}")
+            else:
+                print(f"\n[Auto Loop] 第 {iteration} 次完成，未取得 vmaf.json，後續迭代不使用反饋")
+
+        print(f"\n{'='*60}")
+        print(f"[Auto Loop] 所有 {max_iterations} 次迭代完成")
+        print(f"{'='*60}")
+
+    elif args.batch:
         transcoder.batch_process_videos(
             args.input,
             use_ffmpeg=args.ffmpeg,
@@ -261,7 +365,9 @@ def main():
             quality_method=method,
             preview_mode=args.preview,
             preview_duration=args.preview_duration,
-            auto_confirm=args.yes
+            auto_confirm=args.yes,
+            model=args.model,
+            extra_prompt=args.prompt
         )
     else:
         transcoder.process_video(
@@ -272,7 +378,9 @@ def main():
             preview_mode=args.preview,
             preview_duration=args.preview_duration,
             auto_confirm=args.yes,
-            vmaf_feedback=vmaf_feedback
+            vmaf_feedback=vmaf_feedback,
+            model=args.model,
+            extra_prompt=args.prompt
         )
 
 if __name__ == "__main__":

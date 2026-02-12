@@ -226,3 +226,6 @@ test_hb_vmaf*.txt
 test_diag*.txt
 test_feedback*.txt
 test_no_feedback*.txt
+
+# AI generated content
+**/*.local.md
