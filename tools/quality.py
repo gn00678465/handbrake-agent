@@ -2,6 +2,7 @@
 import subprocess
 import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
@@ -51,7 +52,40 @@ def calculate_vmaf(reference_path: str, distorted_path: str) -> Dict[str, float]
     ]
 
     try:
-        subprocess.run(cmd, check=True, capture_output=True)
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+
+        # 即時解析 ffmpeg stderr，顯示 VMAF 計算進度
+        buf = b""
+        while True:
+            chunk = process.stderr.read(256)
+            if not chunk:
+                break
+            buf += chunk
+            # ffmpeg 進度使用 \r 覆寫同一行，也可能有 \n
+            parts = re.split(b"[\r\n]", buf)
+            buf = parts[-1]
+            for segment in parts[:-1]:
+                line = segment.decode("utf-8", errors="ignore")
+                m = re.search(r"time=(\d+):(\d+):(\d+\.\d+)", line)
+                if m:
+                    h, mi, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
+                    elapsed = h * 3600 + mi * 60 + s
+                    pct = min(100.0, elapsed / distorted_duration * 100)
+                    print(
+                        f"\r  VMAF 計算中... {pct:5.1f}%  ({elapsed:.1f}s / {distorted_duration:.1f}s)",
+                        end="",
+                        flush=True,
+                    )
+
+        process.wait()
+        print()  # 換行，清除進度列
+
+        if process.returncode != 0:
+            raise subprocess.CalledProcessError(process.returncode, cmd)
 
         with open(vmaf_json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -71,7 +105,7 @@ def calculate_vmaf(reference_path: str, distorted_path: str) -> Dict[str, float]
         return scores
 
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"VMAF 計算失敗: {e.stderr.decode()}")
+        raise RuntimeError(f"VMAF 計算失敗 (exit {e.returncode})")
     except Exception as e:
         raise RuntimeError(f"VMAF 結果解析失敗: {e}")
 
