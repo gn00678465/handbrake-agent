@@ -1,4 +1,5 @@
 """Video quality assessment using VMAF, PSNR, and SSIM"""
+import os
 import subprocess
 import json
 import re
@@ -19,13 +20,18 @@ def _get_duration(path: str) -> float:
     return float(json.loads(result.stdout)["format"]["duration"])
 
 
-def calculate_vmaf(reference_path: str, distorted_path: str) -> Dict[str, float]:
+def calculate_vmaf(
+    reference_path: str,
+    distorted_path: str,
+    n_subsample: int = 1,
+) -> Dict[str, float]:
     """
     使用 VMAF 計算影片品質
 
     Args:
         reference_path: 原始影片路徑
         distorted_path: 轉碼後影片路徑
+        n_subsample: 每 N 幀取樣一次（預設 1 = 每幀都算；設 4-5 可大幅加速，誤差 ±1-2 分）
 
     Returns:
         VMAF 分數字典
@@ -37,6 +43,9 @@ def calculate_vmaf(reference_path: str, distorted_path: str) -> Dict[str, float]
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     vmaf_json_path = str(Path(distorted_path).parent / f"vmaf_{timestamp}.json")
 
+    n_threads = os.cpu_count() or 1
+    libvmaf_opts = f"log_fmt=json:log_path={vmaf_json_path}:n_threads={n_threads}:n_subsample={n_subsample}"
+
     cmd = [
         "ffmpeg",
         "-i", distorted_path,
@@ -45,11 +54,14 @@ def calculate_vmaf(reference_path: str, distorted_path: str) -> Dict[str, float]
         "-lavfi", (
             "[0:v]scale=1920:1080:flags=bicubic[dis];"
             "[1:v]scale=1920:1080:flags=bicubic[ref];"
-            f"[dis][ref]libvmaf=log_fmt=json:log_path={vmaf_json_path}"
+            f"[dis][ref]libvmaf={libvmaf_opts}"
         ),
         "-f", "null",
         "-"
     ]
+
+    if n_subsample > 1:
+        print(f"  (n_threads={n_threads}, n_subsample={n_subsample} → 每 {n_subsample} 幀取樣一次，加速 ~{n_subsample}x)")
 
     try:
         process = subprocess.Popen(

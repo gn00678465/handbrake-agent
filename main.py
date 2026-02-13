@@ -26,7 +26,8 @@ class VideoTranscoder:
         vmaf_feedback: Dict[str, Any] = None,
         model: str = "gpt5-mini",
         extra_prompt: str = None,
-        params_override: Dict[str, Any] = None
+        params_override: Dict[str, Any] = None,
+        vmaf_subsample: int = 1
     ) -> Dict[str, Any]:
         """
         完整的影片處理流程
@@ -128,7 +129,7 @@ class VideoTranscoder:
             print("\n[4/5] 品質驗證...")
             try:
                 if quality_method == 'vmaf':
-                    quality_scores = calculate_vmaf(input_path, str(output_path))
+                    quality_scores = calculate_vmaf(input_path, str(output_path), n_subsample=vmaf_subsample)
                 else:
                     quality_scores = calculate_psnr_ssim(input_path, str(output_path))
 
@@ -258,7 +259,18 @@ def main():
     parser.add_argument("--batch", action="store_true", help="批次處理模式")
     parser.add_argument("--ffmpeg", action="store_true", help="使用 FFmpeg 而非 HandBrake")
     parser.add_argument("--no-verify", action="store_true", help="停用品質驗證")
-    parser.add_argument("--vmaf", action="store_true", help="使用 VMAF 驗證")
+    parser.add_argument(
+        "--vmaf",
+        nargs="?",
+        const=1,
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "啟用 VMAF 品質驗證。可選擇性指定取樣間隔 N（每 N 幀計算一次）。"
+            "不帶數字時預設 N=1（逐幀精確）；--vmaf 5 表示每 5 幀取樣，加速 ~5x，誤差 ±1-2 分。"
+        )
+    )
     parser.add_argument(
         "--preview",
         action="store_true",
@@ -308,13 +320,13 @@ def main():
         metavar="PARAMS_JSON",
         help="載入先前儲存的 params.json，略過 AI 分析直接使用指定參數"
     )
-
     args = parser.parse_args()
 
     transcoder = VideoTranscoder()
 
-    method = 'vmaf' if args.vmaf else 'psnr_ssim'
+    method = 'vmaf' if args.vmaf is not None else 'psnr_ssim'
     verify = not args.no_verify
+    vmaf_subsample = args.vmaf if args.vmaf is not None else 1
 
     # 讀取 --params-file（若有提供，略過 AI 分析）
     params_override = None
@@ -385,7 +397,8 @@ def main():
                 auto_confirm=args.yes,
                 vmaf_feedback=loop_vmaf_feedback,
                 model=args.model,
-                extra_prompt=args.prompt
+                extra_prompt=args.prompt,
+                vmaf_subsample=vmaf_subsample
             )
 
             # 取得此輪產生的 vmaf.json 路徑，供下一輪使用
@@ -432,7 +445,8 @@ def main():
             vmaf_feedback=vmaf_feedback,
             model=args.model,
             extra_prompt=args.prompt,
-            params_override=params_override
+            params_override=params_override,
+            vmaf_subsample=vmaf_subsample
         )
 
 if __name__ == "__main__":
