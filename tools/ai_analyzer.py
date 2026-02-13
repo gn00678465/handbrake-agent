@@ -117,7 +117,6 @@ def _build_analysis_prompt(
         提示詞字串
     """
     video = video_info.get("video", {})
-    audio = video_info.get("audio", {})
 
     prompt = f"""你是一個專業的影片轉碼參數優化專家。請分析以下影片資訊，並建議最佳的 H.265 轉碼參數。
 
@@ -130,11 +129,7 @@ def _build_analysis_prompt(
 - 檔案大小: {file_size_mb:.2f} MB
 - 時長: {video_info.get("duration", 0):.1f} 秒
 
-音訊資訊：
-- 編碼格式: {audio.get("codec", "unknown")}
-- 取樣率: {audio.get("sample_rate", 0)} Hz
-- 聲道數: {audio.get("channels", 0)}
-- 位元率: {audio.get("bit_rate", 0) / 1000:.0f} kbps
+音訊：直接複製原始音軌，不重新編碼。
 
 請根據以下原則提供建議：
 1. **CRF 值**（18-28，越低品質越好但檔案越大）：
@@ -151,12 +146,8 @@ def _build_analysis_prompt(
    - 4K → 1080p, 1080p → 720p（如果合適）
    - 否則保持 "keep"
 
-4. **音訊位元率**：
-   - 立體聲建議 128k-192k
-   - 多聲道建議 192k-256k
-
-5. **預估壓縮率**：
-   - H.265 通常可達到 30-50% 的壓縮率
+4. **預估壓縮率**：
+   - H.265 通常可達到 30-50% 的壓縮率（不含音訊部分）
 
 請以 JSON 格式回覆，格式如下：
 ```json
@@ -164,7 +155,6 @@ def _build_analysis_prompt(
   "recommended_crf": 23,
   "preset": "medium",
   "resolution": "keep",
-  "audio_bitrate": "128k",
   "estimated_size_reduction": "40%",
   "reasoning": "簡短說明建議理由"
 }}
@@ -244,7 +234,6 @@ def _parse_ai_response(response: str) -> Dict[str, Any]:
             "recommended_crf",
             "preset",
             "resolution",
-            "audio_bitrate",
             "estimated_size_reduction",
             "reasoning",
         ]
@@ -262,7 +251,6 @@ def _parse_ai_response(response: str) -> Dict[str, Any]:
             "recommended_crf": 23,
             "preset": "medium",
             "resolution": "keep",
-            "audio_bitrate": "128k",
             "estimated_size_reduction": "40%",
             "reasoning": "AI 分析失敗，使用預設安全參數",
         }
@@ -272,7 +260,6 @@ def _parse_ai_response(response: str) -> Dict[str, Any]:
             "recommended_crf": 23,
             "preset": "medium",
             "resolution": "keep",
-            "audio_bitrate": "128k",
             "estimated_size_reduction": "40%",
             "reasoning": "參數解析失敗，使用預設安全參數",
         }

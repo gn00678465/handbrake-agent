@@ -22,7 +22,6 @@ def transcode_with_ffmpeg(
     crf = params.get("recommended_crf", 23)
     preset = params.get("preset", "medium")
     resolution = params.get("resolution", "keep")
-    audio_bitrate = params.get("audio_bitrate", "128k")
 
     cmd = [
         "ffmpeg",
@@ -44,9 +43,7 @@ def transcode_with_ffmpeg(
             "-preset",
             preset,
             "-c:a",
-            "aac",
-            "-b:a",
-            audio_bitrate,
+            "copy",  # 音訊直接複製，不重新編碼
         ]
     )
 
@@ -84,7 +81,6 @@ def transcode_with_handbrake(
     crf = params.get("recommended_crf", 23)
     preset = params.get("preset", "medium")
     resolution = params.get("resolution", "keep")
-    audio_bitrate = params.get("audio_bitrate", "128")
 
     cmd = [
         "HandBrakeCLI",
@@ -107,9 +103,7 @@ def transcode_with_handbrake(
             "--encoder-preset",
             preset,
             "-E",
-            "av_aac",
-            "-B",
-            audio_bitrate,
+            "copy",  # 音訊直接複製，不重新編碼
         ]
     )
 

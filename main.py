@@ -105,7 +105,7 @@ class VideoTranscoder:
         print(f"  CRF: {params.get('recommended_crf')}")
         print(f"  Preset: {params.get('preset')}")
         print(f"  解析度: {params.get('resolution')}")
-        print(f"  音訊位元率: {params.get('audio_bitrate')}")
+        print("  音訊: copy（不重新編碼）")
         print(f"  預估壓縮: {params.get('estimated_size_reduction')}")
         print(f"  理由: {params.get('reasoning')}")
 
