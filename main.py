@@ -1,10 +1,14 @@
 import argparse
+import json
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
 from tools.video_info import get_video_info_ffprobe
 from tools.transcoder import transcode_with_ffmpeg, transcode_with_handbrake
 from tools.quality import calculate_vmaf, calculate_psnr_ssim, evaluate_quality, diagnose_vmaf_params
 from tools.ai_analyzer import analyze_video
+
+VMAF_GOOD_THRESHOLD = 80  # VMAF 達到此分數視為品質良好，儲存參數並提前停止 auto-loop
 
 class VideoTranscoder:
     """影片轉碼器，整合 AI 分析與品質驗證"""
@@ -21,7 +25,8 @@ class VideoTranscoder:
         auto_confirm: bool = False,
         vmaf_feedback: Dict[str, Any] = None,
         model: str = "gpt5-mini",
-        extra_prompt: str = None
+        extra_prompt: str = None,
+        params_override: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """
         完整的影片處理流程
@@ -38,9 +43,10 @@ class VideoTranscoder:
             vmaf_feedback: VMAF 反饋資料
             model: Copilot SDK 使用的 AI 模型名稱
             extra_prompt: 使用者自訂的額外提示詞
+            params_override: 直接指定轉碼參數，略過 AI 分析（來自 --params-file）
 
         Returns:
-            包含處理結果的字典（含 vmaf_json_path 等）
+            包含處理結果的字典（含 vmaf_json_path、params、params_path 等）
         """
         
         input_file = Path(input_path)
@@ -57,19 +63,23 @@ class VideoTranscoder:
         video_info = get_video_info_ffprobe(input_path)
         file_size_mb = input_file.stat().st_size / (1024 * 1024)
         
-        # 2. LLM 分析
-        print("\n[2/5] 使用 AI 分析最佳轉碼參數 (GitHub Copilot SDK)...")
-        if model != "gpt5-mini":
-            print(f"  使用模型: {model}")
-        if extra_prompt:
-            print(f"  附加 prompt: {extra_prompt[:60]}{'...' if len(extra_prompt) > 60 else ''}")
-        try:
-            params = analyze_video(video_info, file_size_mb, vmaf_feedback, model=model, extra_prompt=extra_prompt)
-        except Exception as e:
-            print(f"AI 分析失敗: {e}")
-            return
-        
-        print(f"\n建議參數：")
+        # 2. 參數取得：使用覆寫參數或 AI 分析
+        if params_override:
+            print("\n[2/5] 使用指定參數（略過 AI 分析）...")
+            params = params_override
+        else:
+            print("\n[2/5] 使用 AI 分析最佳轉碼參數 (GitHub Copilot SDK)...")
+            if model != "gpt5-mini":
+                print(f"  使用模型: {model}")
+            if extra_prompt:
+                print(f"  附加 prompt: {extra_prompt[:60]}{'...' if len(extra_prompt) > 60 else ''}")
+            try:
+                params = analyze_video(video_info, file_size_mb, vmaf_feedback, model=model, extra_prompt=extra_prompt)
+            except Exception as e:
+                print(f"AI 分析失敗: {e}")
+                return {}
+
+        print(f"\n使用參數：")
         print(f"  CRF: {params.get('recommended_crf')}")
         print(f"  Preset: {params.get('preset')}")
         print(f"  解析度: {params.get('resolution')}")
@@ -155,10 +165,27 @@ class VideoTranscoder:
         print(f"壓縮率: {reduction:.1f}%")
         print(f"輸出檔案: {output_path}")
 
+        # VMAF ≥ 80 時，儲存參數供後續直接套用
+        params_path = None
+        vmaf_score = (quality_scores or {}).get("vmaf", 0)
+        if vmaf_score >= VMAF_GOOD_THRESHOLD:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            params_path = str(Path(input_path).parent / f"params_{timestamp}.json")
+            try:
+                with open(params_path, "w", encoding="utf-8") as f:
+                    json.dump(params, f, ensure_ascii=False, indent=2)
+                print(f"\n✅ VMAF {vmaf_score:.2f} 達到 {VMAF_GOOD_THRESHOLD} 分，參數已儲存：{params_path}")
+                print(f"   套用至完整影片：python main.py {input_path} --params-file \"{params_path}\"")
+            except Exception as e:
+                print(f"[WARN] 儲存參數失敗: {e}")
+                params_path = None
+
         return {
             "vmaf_json_path": vmaf_json_path,
             "quality_scores": quality_scores,
             "output_path": str(output_path),
+            "params": params,
+            "params_path": params_path,
         }
 
     def batch_process_videos(
@@ -276,6 +303,11 @@ def main():
         metavar="TEXT",
         help="使用者自訂的額外提示詞，會附加在 AI 分析 prompt 後面"
     )
+    parser.add_argument(
+        "--params-file",
+        metavar="PARAMS_JSON",
+        help="載入先前儲存的 params.json，略過 AI 分析直接使用指定參數"
+    )
 
     args = parser.parse_args()
 
@@ -283,6 +315,17 @@ def main():
 
     method = 'vmaf' if args.vmaf else 'psnr_ssim'
     verify = not args.no_verify
+
+    # 讀取 --params-file（若有提供，略過 AI 分析）
+    params_override = None
+    if args.params_file:
+        try:
+            with open(args.params_file, "r", encoding="utf-8") as f:
+                params_override = json.load(f)
+            print(f"[Params] 載入參數檔案：{args.params_file}")
+            print(f"  CRF: {params_override.get('recommended_crf')}  Preset: {params_override.get('preset')}")
+        except Exception as e:
+            print(f"[Params] 無法讀取 {args.params_file}: {e}，改用 AI 分析")
 
     # 讀取 vmaf feedback 檔案（若有提供）
     vmaf_feedback = None
@@ -353,8 +396,16 @@ def main():
             else:
                 print(f"\n[Auto Loop] 第 {iteration} 次完成，未取得 vmaf.json，後續迭代不使用反饋")
 
+            # VMAF ≥ 80 提前停止
+            loop_vmaf = (result.get("quality_scores") or {}).get("vmaf", 0) if result else 0
+            if loop_vmaf >= VMAF_GOOD_THRESHOLD:
+                print(f"\n[Auto Loop] VMAF {loop_vmaf:.2f} 已達目標 {VMAF_GOOD_THRESHOLD}，提前停止迭代")
+                if result.get("params_path"):
+                    print(f"[Auto Loop] 最佳參數已儲存：{result['params_path']}")
+                break
+
         print(f"\n{'='*60}")
-        print(f"[Auto Loop] 所有 {max_iterations} 次迭代完成")
+        print(f"[Auto Loop] 迭代完成")
         print(f"{'='*60}")
 
     elif args.batch:
@@ -380,7 +431,8 @@ def main():
             auto_confirm=args.yes,
             vmaf_feedback=vmaf_feedback,
             model=args.model,
-            extra_prompt=args.prompt
+            extra_prompt=args.prompt,
+            params_override=params_override
         )
 
 if __name__ == "__main__":
