@@ -1,7 +1,8 @@
 """Video information extraction using ffprobe"""
+
 import json
 import subprocess
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def get_video_info_ffprobe(video_path: str) -> Dict[str, Any]:
@@ -14,28 +15,15 @@ def get_video_info_ffprobe(video_path: str) -> Dict[str, Any]:
     Returns:
         包含影片資訊的字典
     """
-    cmd = [
-        "ffprobe",
-        "-v", "quiet",
-        "-print_format", "json",
-        "-show_format",
-        "-show_streams",
-        video_path
-    ]
+    cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", video_path]
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         data = json.loads(result.stdout)
 
         # 提取關鍵資訊
-        video_stream = next(
-            (s for s in data.get("streams", []) if s.get("codec_type") == "video"),
-            None
-        )
-        audio_stream = next(
-            (s for s in data.get("streams", []) if s.get("codec_type") == "audio"),
-            None
-        )
+        video_stream = next((s for s in data.get("streams", []) if s.get("codec_type") == "video"), None)
+        audio_stream = next((s for s in data.get("streams", []) if s.get("codec_type") == "audio"), None)
 
         info = {
             "format": data.get("format", {}).get("format_name", "unknown"),

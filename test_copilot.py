@@ -4,7 +4,9 @@
 
 此腳本驗證 Copilot SDK 是否正確安裝並可以正常運作。
 """
+
 import asyncio
+
 from copilot import CopilotClient
 
 
@@ -22,10 +24,12 @@ async def test_copilot_connection():
         print("✓ Copilot 客戶端已啟動")
 
         # 創建會話
-        session = await client.create_session({
-            "model": "claude-sonnet-4.5",
-            "streaming": False,
-        })
+        session = await client.create_session(
+            {
+                "model": "claude-sonnet-4.5",
+                "streaming": False,
+            }
+        )
         print("✓ 會話已創建")
 
         # 發送測試訊息
@@ -72,9 +76,9 @@ async def test_copilot_connection():
 
 async def test_ai_analyzer():
     """測試 AI 分析器模組"""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("🔄 測試 AI 影片分析器...")
-    print("="*60)
+    print("=" * 60)
 
     try:
         from tools.ai_analyzer import analyze_video
@@ -98,16 +102,16 @@ async def test_ai_analyzer():
                 "sample_rate": 48000,
                 "channels": 2,
                 "bit_rate": 128000,
-            }
+            },
         }
 
         file_size_mb = 71.5
 
         print("\n測試影片資訊：")
-        print(f"  解析度: 1920x1080")
-        print(f"  編碼: H.264")
-        print(f"  時長: 120.5 秒")
-        print(f"  檔案大小: 71.5 MB")
+        print("  解析度: 1920x1080")
+        print("  編碼: H.264")
+        print("  時長: 120.5 秒")
+        print("  檔案大小: 71.5 MB")
 
         print("\n📤 請求 AI 分析...")
         result = analyze_video(test_video_info, file_size_mb)
@@ -126,15 +130,16 @@ async def test_ai_analyzer():
     except Exception as e:
         print(f"\n❌ AI 分析器測試失敗: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
 
 async def main():
     """主測試函數"""
-    print("="*60)
+    print("=" * 60)
     print("GitHub Copilot SDK 整合測試")
-    print("="*60)
+    print("=" * 60)
 
     # 測試 1: 基本連接
     test1_passed = await test_copilot_connection()
@@ -143,9 +148,9 @@ async def main():
     test2_passed = await test_ai_analyzer()
 
     # 總結
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("測試總結")
-    print("="*60)
+    print("=" * 60)
     print(f"基本連接測試: {'✅ 通過' if test1_passed else '❌ 失敗'}")
     print(f"AI 分析器測試: {'✅ 通過' if test2_passed else '❌ 失敗'}")
 

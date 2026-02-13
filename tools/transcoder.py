@@ -1,13 +1,11 @@
 """Video transcoding using FFmpeg and HandBrake"""
+
 import subprocess
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def transcode_with_ffmpeg(
-    input_path: str,
-    output_path: str,
-    params: Dict[str, Any],
-    duration_limit: int = None
+    input_path: str, output_path: str, params: Dict[str, Any], duration_limit: int = None
 ) -> bool:
     """
     使用 FFmpeg 轉碼影片
@@ -29,20 +27,28 @@ def transcode_with_ffmpeg(
     cmd = [
         "ffmpeg",
         "-y",
-        "-i", input_path,
+        "-i",
+        input_path,
     ]
 
     # 添加時長限制（預覽模式）
     if duration_limit is not None:
         cmd.extend(["-t", str(duration_limit)])
 
-    cmd.extend([
-        "-c:v", "libx265",
-        "-crf", str(crf),
-        "-preset", preset,
-        "-c:a", "aac",
-        "-b:a", audio_bitrate,
-    ])
+    cmd.extend(
+        [
+            "-c:v",
+            "libx265",
+            "-crf",
+            str(crf),
+            "-preset",
+            preset,
+            "-c:a",
+            "aac",
+            "-b:a",
+            audio_bitrate,
+        ]
+    )
 
     # 處理解析度調整
     if resolution != "keep":
@@ -61,10 +67,7 @@ def transcode_with_ffmpeg(
 
 
 def transcode_with_handbrake(
-    input_path: str,
-    output_path: str,
-    params: Dict[str, Any],
-    duration_limit: int = None
+    input_path: str, output_path: str, params: Dict[str, Any], duration_limit: int = None
 ) -> bool:
     """
     使用 HandBrake CLI 轉碼影片
@@ -85,21 +88,30 @@ def transcode_with_handbrake(
 
     cmd = [
         "HandBrakeCLI",
-        "-i", input_path,
-        "-o", output_path,
+        "-i",
+        input_path,
+        "-o",
+        output_path,
     ]
 
     # 添加時長限制（預覽模式）
     if duration_limit is not None:
         cmd.extend(["--start-at", "duration:0", "--stop-at", f"duration:{duration_limit}"])
 
-    cmd.extend([
-        "-e", "x265",
-        "-q", str(crf),
-        "--encoder-preset", preset,
-        "-E", "av_aac",
-        "-B", audio_bitrate,
-    ])
+    cmd.extend(
+        [
+            "-e",
+            "x265",
+            "-q",
+            str(crf),
+            "--encoder-preset",
+            preset,
+            "-E",
+            "av_aac",
+            "-B",
+            audio_bitrate,
+        ]
+    )
 
     # 處理解析度調整
     if resolution != "keep":

@@ -1,7 +1,9 @@
 """Video analysis using GitHub Copilot SDK"""
+
 import asyncio
 import json
-from typing import Dict, Any
+from typing import Any, Dict
+
 from copilot import CopilotClient
 
 
@@ -10,7 +12,7 @@ def analyze_video(
     file_size_mb: float,
     vmaf_data: Dict[str, Any] = None,
     model: str = "gpt5-mini",
-    extra_prompt: str = None
+    extra_prompt: str = None,
 ) -> Dict[str, Any]:
     """
     使用 GitHub Copilot SDK 分析影片並建議最佳轉碼參數
@@ -34,7 +36,7 @@ async def _analyze_video_async(
     file_size_mb: float,
     vmaf_data: Dict[str, Any] = None,
     model: str = "gpt5-mini",
-    extra_prompt: str = None
+    extra_prompt: str = None,
 ) -> Dict[str, Any]:
     """
     異步分析影片並建議最佳轉碼參數
@@ -55,10 +57,12 @@ async def _analyze_video_async(
 
     try:
         # 創建對話會話
-        session = await client.create_session({
-            "model": model,
-            "streaming": False,
-        })
+        session = await client.create_session(
+            {
+                "model": model,
+                "streaming": False,
+            }
+        )
 
         # 構建分析提示
         prompt = _build_analysis_prompt(video_info, file_size_mb, vmaf_data, extra_prompt)
@@ -98,10 +102,7 @@ async def _analyze_video_async(
 
 
 def _build_analysis_prompt(
-    video_info: Dict[str, Any],
-    file_size_mb: float,
-    vmaf_data: Dict[str, Any] = None,
-    extra_prompt: str = None
+    video_info: Dict[str, Any], file_size_mb: float, vmaf_data: Dict[str, Any] = None, extra_prompt: str = None
 ) -> str:
     """
     構建 AI 分析提示詞
@@ -121,19 +122,19 @@ def _build_analysis_prompt(
     prompt = f"""你是一個專業的影片轉碼參數優化專家。請分析以下影片資訊，並建議最佳的 H.265 轉碼參數。
 
 影片資訊：
-- 解析度: {video.get('width', 0)}x{video.get('height', 0)}
-- 編碼格式: {video.get('codec', 'unknown')}
-- 幀率: {video.get('fps', 0):.2f} fps
-- 位元率: {video.get('bit_rate', 0) / 1000:.0f} kbps
-- 像素格式: {video.get('pix_fmt', 'unknown')}
+- 解析度: {video.get("width", 0)}x{video.get("height", 0)}
+- 編碼格式: {video.get("codec", "unknown")}
+- 幀率: {video.get("fps", 0):.2f} fps
+- 位元率: {video.get("bit_rate", 0) / 1000:.0f} kbps
+- 像素格式: {video.get("pix_fmt", "unknown")}
 - 檔案大小: {file_size_mb:.2f} MB
-- 時長: {video_info.get('duration', 0):.1f} 秒
+- 時長: {video_info.get("duration", 0):.1f} 秒
 
 音訊資訊：
-- 編碼格式: {audio.get('codec', 'unknown')}
-- 取樣率: {audio.get('sample_rate', 0)} Hz
-- 聲道數: {audio.get('channels', 0)}
-- 位元率: {audio.get('bit_rate', 0) / 1000:.0f} kbps
+- 編碼格式: {audio.get("codec", "unknown")}
+- 取樣率: {audio.get("sample_rate", 0)} Hz
+- 聲道數: {audio.get("channels", 0)}
+- 位元率: {audio.get("bit_rate", 0) / 1000:.0f} kbps
 
 請根據以下原則提供建議：
 1. **CRF 值**（18-28，越低品質越好但檔案越大）：
@@ -173,6 +174,7 @@ def _build_analysis_prompt(
 
     # 有 VMAF 資料時，在 prompt 末尾插入反饋區段，要求 AI 依指標調整參數
     if vmaf_data:
+
         def m(key: str) -> str:
             v = vmaf_data.get(key, {})
             mean = v.get("mean", None) if isinstance(v, dict) else None
@@ -244,7 +246,7 @@ def _parse_ai_response(response: str) -> Dict[str, Any]:
             "resolution",
             "audio_bitrate",
             "estimated_size_reduction",
-            "reasoning"
+            "reasoning",
         ]
 
         for field in required_fields:
@@ -262,7 +264,7 @@ def _parse_ai_response(response: str) -> Dict[str, Any]:
             "resolution": "keep",
             "audio_bitrate": "128k",
             "estimated_size_reduction": "40%",
-            "reasoning": "AI 分析失敗，使用預設安全參數"
+            "reasoning": "AI 分析失敗，使用預設安全參數",
         }
     except Exception as e:
         print(f"[WARN] 解析錯誤，使用預設參數: {e}")
@@ -272,5 +274,5 @@ def _parse_ai_response(response: str) -> Dict[str, Any]:
             "resolution": "keep",
             "audio_bitrate": "128k",
             "estimated_size_reduction": "40%",
-            "reasoning": "參數解析失敗，使用預設安全參數"
+            "reasoning": "參數解析失敗，使用預設安全參數",
         }

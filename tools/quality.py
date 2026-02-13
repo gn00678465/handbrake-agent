@@ -1,21 +1,17 @@
 """Video quality assessment using VMAF, PSNR, and SSIM"""
-import os
-import subprocess
+
 import json
+import os
 import re
-import sys
+import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def _get_duration(path: str) -> float:
     """取得影片時長（秒）"""
-    cmd = [
-        "ffprobe", "-v", "quiet",
-        "-print_format", "json",
-        "-show_format", path
-    ]
+    cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", path]
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     return float(json.loads(result.stdout)["format"]["duration"])
 
@@ -48,20 +44,27 @@ def calculate_vmaf(
 
     cmd = [
         "ffmpeg",
-        "-i", distorted_path,
-        "-t", str(distorted_duration),
-        "-i", reference_path,
-        "-lavfi", (
+        "-i",
+        distorted_path,
+        "-t",
+        str(distorted_duration),
+        "-i",
+        reference_path,
+        "-lavfi",
+        (
             "[0:v]scale=1920:1080:flags=bicubic[dis];"
             "[1:v]scale=1920:1080:flags=bicubic[ref];"
             f"[dis][ref]libvmaf={libvmaf_opts}"
         ),
-        "-f", "null",
-        "-"
+        "-f",
+        "null",
+        "-",
     ]
 
     if n_subsample > 1:
-        print(f"  (n_threads={n_threads}, n_subsample={n_subsample} → 每 {n_subsample} 幀取樣一次，加速 ~{n_subsample}x)")
+        print(
+            f"  (n_threads={n_threads}, n_subsample={n_subsample} → 每 {n_subsample} 幀取樣一次，加速 ~{n_subsample}x)"
+        )
 
     try:
         process = subprocess.Popen(
@@ -134,43 +137,19 @@ def calculate_psnr_ssim(reference_path: str, distorted_path: str) -> Dict[str, f
         包含 PSNR 和 SSIM 分數的字典
     """
     # 計算 PSNR
-    psnr_cmd = [
-        "ffmpeg",
-        "-i", distorted_path,
-        "-i", reference_path,
-        "-lavfi", "psnr",
-        "-f", "null",
-        "-"
-    ]
+    psnr_cmd = ["ffmpeg", "-i", distorted_path, "-i", reference_path, "-lavfi", "psnr", "-f", "null", "-"]
 
     # 計算 SSIM
-    ssim_cmd = [
-        "ffmpeg",
-        "-i", distorted_path,
-        "-i", reference_path,
-        "-lavfi", "ssim",
-        "-f", "null",
-        "-"
-    ]
+    ssim_cmd = ["ffmpeg", "-i", distorted_path, "-i", reference_path, "-lavfi", "ssim", "-f", "null", "-"]
 
     try:
         # 執行 PSNR
-        psnr_result = subprocess.run(
-            psnr_cmd,
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        psnr_result = subprocess.run(psnr_cmd, capture_output=True, text=True, check=True)
         psnr_match = re.search(r"average:(\d+\.\d+)", psnr_result.stderr)
         psnr = float(psnr_match.group(1)) if psnr_match else 0
 
         # 執行 SSIM
-        ssim_result = subprocess.run(
-            ssim_cmd,
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        ssim_result = subprocess.run(ssim_cmd, capture_output=True, text=True, check=True)
         ssim_match = re.search(r"All:(\d+\.\d+)", ssim_result.stderr)
         ssim = float(ssim_match.group(1)) if ssim_match else 0
 
@@ -214,12 +193,12 @@ def diagnose_vmaf_params(vmaf_json_path: str) -> Dict[str, Any]:
         return pooled.get(key, {}).get("mean", 1.0)
 
     vmaf_score = mean("vmaf")
-    adm2       = mean("integer_adm2")
-    adm_s2     = mean("integer_adm_scale2")
-    adm_s3     = mean("integer_adm_scale3")
-    vif_s0     = mean("integer_vif_scale0")
-    vif_s3     = mean("integer_vif_scale3")
-    motion2    = mean("integer_motion2")
+    adm2 = mean("integer_adm2")
+    adm_s2 = mean("integer_adm_scale2")
+    adm_s3 = mean("integer_adm_scale3")
+    vif_s0 = mean("integer_vif_scale0")
+    vif_s3 = mean("integer_vif_scale3")
+    motion2 = mean("integer_motion2")
 
     suggestions = []
 
@@ -229,19 +208,13 @@ def diagnose_vmaf_params(vmaf_json_path: str) -> Dict[str, Any]:
             f"VIF-scale0={vif_s0:.3f} (嚴重) -> 明顯方塊感/色帶，建議 CRF 降低 4-6（例如 CRF 23 -> 17-19）"
         )
     elif vif_s0 < 0.70:
-        suggestions.append(
-            f"VIF-scale0={vif_s0:.3f} -> 輕度 blocking/banding，建議 CRF 降低 2-3"
-        )
+        suggestions.append(f"VIF-scale0={vif_s0:.3f} -> 輕度 blocking/banding，建議 CRF 降低 2-3")
 
     # --- 邊緣模糊 (ADM2) ---
     if adm2 < 0.82:
-        suggestions.append(
-            f"ADM2={adm2:.3f} (嚴重) -> 邊緣嚴重模糊，建議降低 CRF 且改用 slower/veryslow preset"
-        )
+        suggestions.append(f"ADM2={adm2:.3f} (嚴重) -> 邊緣嚴重模糊，建議降低 CRF 且改用 slower/veryslow preset")
     elif adm2 < 0.88:
-        suggestions.append(
-            f"ADM2={adm2:.3f} -> 輕度邊緣模糊，建議改用 slow 或 slower preset"
-        )
+        suggestions.append(f"ADM2={adm2:.3f} -> 輕度邊緣模糊，建議改用 slow 或 slower preset")
 
     # --- 細節紋理損失 (ADM scale2/3 + VIF scale3) ---
     if adm_s3 < 0.82 or vif_s3 < 0.80:
@@ -249,9 +222,7 @@ def diagnose_vmaf_params(vmaf_json_path: str) -> Dict[str, Any]:
             f"ADM-scale3={adm_s3:.3f} / VIF-scale3={vif_s3:.3f} -> 細部紋理損失，建議 slower preset 或 CRF -2"
         )
     elif adm_s2 < 0.85:
-        suggestions.append(
-            f"ADM-scale2={adm_s2:.3f} -> 中等細節損失，建議改用 slow preset"
-        )
+        suggestions.append(f"ADM-scale2={adm_s2:.3f} -> 中等細節損失，建議改用 slow preset")
 
     # --- 高動態場景 ---
     if motion2 > 8.0:
@@ -259,15 +230,11 @@ def diagnose_vmaf_params(vmaf_json_path: str) -> Dict[str, Any]:
             f"motion2={motion2:.2f} (極高動態) -> 動態模糊/拖影，建議 CRF -3 或增加參考幀（--encoder-option ref=5）"
         )
     elif motion2 > 4.0:
-        suggestions.append(
-            f"motion2={motion2:.2f} (高動態) -> 動態場景品質不足，建議 CRF -2"
-        )
+        suggestions.append(f"motion2={motion2:.2f} (高動態) -> 動態場景品質不足，建議 CRF -2")
 
     # --- 無明顯問題但分數仍低 ---
     if not suggestions and vmaf_score < 70:
-        suggestions.append(
-            "各 sub-metrics 無明顯異常，低分可能源於來源素材本身已有壓縮損失（generation loss）"
-        )
+        suggestions.append("各 sub-metrics 無明顯異常，低分可能源於來源素材本身已有壓縮損失（generation loss）")
 
     return {
         "available": True,
