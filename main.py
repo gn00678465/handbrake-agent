@@ -281,6 +281,7 @@ def _run_workflow(args):
 
     current_vmaf_json = None
     best_params = None
+    prev_vmaf = None
 
     for iteration in range(1, max_loop + 1):
         print(f"\n[Run] 第 {iteration}/{max_loop} 次迭代")
@@ -336,6 +337,14 @@ def _run_workflow(args):
         if loop_vmaf >= VMAF_GOOD_THRESHOLD:
             print(f"[Run] VMAF {loop_vmaf:.2f} 已達目標 {VMAF_GOOD_THRESHOLD}，停止迭代")
             break
+
+        if prev_vmaf is not None and abs(loop_vmaf - prev_vmaf) < 5:
+            print(
+                f"[Run] VMAF 改善幅度不足（{prev_vmaf:.2f} → {loop_vmaf:.2f}，差距 {abs(loop_vmaf - prev_vmaf):.2f} < 5），停止迭代"
+            )
+            break
+
+        prev_vmaf = loop_vmaf
 
     if not best_params:
         print("[Run] 無法取得轉碼參數，中止工作流程")
