@@ -2,7 +2,7 @@
 
 使用 GitHub Copilot SDK 提供 AI 驅動的影片轉碼參數優化建議。
 
-**版本：** 1.0.0
+**版本：** 1.1.0
 **狀態：** ✅ 生產就緒
 
 ---
@@ -195,76 +195,83 @@ copilot login
 
 ## 🔧 CLI 工具安裝（可選）
 
-將 HandBrake Agent 安裝為全域命令，可以在任何地方使用。
+將 HandBrake Agent 安裝為全域命令，可以在任何地方使用。安裝後提供兩個等價命令：
 
-### 開發模式（類似 pnpm link）
+- `handbrake-agent` — 完整命令名
+- `hba` — 簡短別名
 
-開發模式安裝，修改代碼後立即生效：
+### 全域安裝（推薦）
+
+使用 `uv tool` 安裝到獨立的全域環境，與系統 Python 完全隔離：
 
 ```bash
-# 安裝為可編輯模式
+# 首次安裝
+uv tool install .
+
+# 驗證安裝
+hba --version
+# handbrake-agent 1.1.0
+
+# 使用命令（任何目錄皆可）
+hba video.mp4 --preview --vmaf --yes
+handbrake-agent video.mp4 run
+```
+
+### 更新全域安裝
+
+取得新版本後重新安裝：
+
+```bash
+# 拉取最新程式碼
+git pull
+
+# 重新安裝（覆蓋舊版本）
+uv tool install --reinstall .
+
+# 確認版本已更新
+hba --version
+```
+
+> ⚠️ **若 `hba --version` 仍顯示舊版本**，表示 PATH 中存在另一個舊版執行檔（通常來自先前執行過 `uv pip install -e .`，安裝至系統 Python 的 Scripts 目錄）。
+>
+> **診斷方式：**
+> ```powershell
+> where hba
+> # 若出現兩個路徑，例如：
+> # C:\Users\<user>\AppData\Local\Programs\Python\Python313\Scripts\hba.exe  ← 舊版（優先）
+> # C:\Users\<user>\.local\bin\hba.exe                                        ← uv tool 新版
+> ```
+>
+> **解決方式（PowerShell）：**
+> ```powershell
+> Remove-Item "$env:LOCALAPPDATA\Programs\Python\Python313\Scripts\hba.exe"
+> Remove-Item "$env:LOCALAPPDATA\Programs\Python\Python313\Scripts\handbrake-agent.exe"
+> ```
+> 移除後重開終端機，再次執行 `hba --version` 確認。
+
+### 開發模式安裝（適合修改源碼）
+
+安裝為可編輯模式，修改代碼後立即生效，無需重新安裝：
+
+```bash
 uv pip install -e .
 
 # 現在可以直接使用命令
-handbrake-agent --help
-hba --help  # 簡短別名
-
-# 測試
-handbrake-agent video.mp4 --preview
-hba video.mp4 --preview
+hba --help
 ```
 
-**優勢：**
-- ✅ 修改源碼後立即生效，無需重新安裝
-- ✅ 適合開發和測試
-- ✅ 可以在任何目錄使用命令
+> ⚠️ **注意**：`uv pip install -e .` 會將 `hba` / `handbrake-agent` 安裝至系統 Python 的 Scripts 目錄。若之後改用 `uv tool install .` 進行全域安裝，請先手動移除 Scripts 目錄中的舊版執行檔，避免 PATH 衝突（參見上方「更新全域安裝」的注意事項）。
 
-### 生產模式（全域安裝）
-
-使用 uv tool 安裝到全域環境：
+### 卸載
 
 ```bash
-# 安裝工具
-uv tool install .
-
-# 使用命令
-handbrake-agent video.mp4 --preview
-hba video.mp4 --preview
-
-# 更新工具
-uv tool install --reinstall .
-
-# 卸載工具
 uv tool uninstall handbrake-agent
 ```
 
-### 使用 uvx（無需安裝）
-
-直接運行工具，無需安裝：
+### 使用 uvx（免安裝，臨時執行）
 
 ```bash
-# 直接運行
 uvx --from . handbrake-agent video.mp4 --preview
-
-# 從 PyPI 安裝後運行（未來發布後）
-uvx handbrake-agent video.mp4 --preview
-```
-
-### 可用命令
-
-安裝後提供兩個命令：
-
-- `handbrake-agent` - 完整命令名
-- `hba` - 簡短別名
-
-兩個命令功能完全相同：
-
-```bash
-# 完整命令
-handbrake-agent video.mp4 --preview
-
-# 簡短別名
-hba video.mp4 --preview --preview-duration 60
 ```
 
 ---
@@ -902,6 +909,6 @@ python test_copilot.py
 
 ---
 
-**最後更新：** 2026-02-09
-**版本：** 1.0.0
+**最後更新：** 2026-02-14
+**版本：** 1.1.0
 **狀態：** ✅ 生產就緒

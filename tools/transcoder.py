@@ -68,9 +68,9 @@ def transcode_with_ffmpeg(
 
     try:
         total = duration_limit if duration_limit is not None else _get_duration(input_path)
-        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
         with prevent_sleep():
+            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             last_elapsed = 0.0
             with tqdm(total=total, unit="s", unit_scale=True, desc="FFmpeg 轉碼中", dynamic_ncols=True) as pbar:
                 buf = b""
@@ -157,10 +157,9 @@ def transcode_with_handbrake(
         cmd.extend(["-w", width])
 
     try:
-        # HandBrake 將進度輸出至 stdout（格式：Encoding: task 1 of 1, XX.XX %）
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-
         with prevent_sleep():
+            # HandBrake 將進度輸出至 stdout（格式：Encoding: task 1 of 1, XX.XX %）
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             last_pct = 0.0
             with tqdm(
                 total=100.0,

@@ -71,14 +71,13 @@ def calculate_vmaf(
         )
 
     try:
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-
         # 即時解析 ffmpeg stderr，以 tqdm 顯示 VMAF 計算進度；同時阻止系統睡眠
         with prevent_sleep():
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
             last_elapsed = 0.0
             with tqdm(
                 total=distorted_duration,
@@ -156,15 +155,16 @@ def calculate_psnr_ssim(reference_path: str, distorted_path: str) -> Dict[str, f
     ssim_cmd = ["ffmpeg", "-i", distorted_path, "-i", reference_path, "-lavfi", "ssim", "-f", "null", "-"]
 
     try:
-        # 執行 PSNR
-        psnr_result = subprocess.run(psnr_cmd, capture_output=True, text=True, check=True)
-        psnr_match = re.search(r"average:(\d+\.\d+)", psnr_result.stderr)
-        psnr = float(psnr_match.group(1)) if psnr_match else 0
+        with prevent_sleep():
+            # 執行 PSNR
+            psnr_result = subprocess.run(psnr_cmd, capture_output=True, text=True, check=True)
+            psnr_match = re.search(r"average:(\d+\.\d+)", psnr_result.stderr)
+            psnr = float(psnr_match.group(1)) if psnr_match else 0
 
-        # 執行 SSIM
-        ssim_result = subprocess.run(ssim_cmd, capture_output=True, text=True, check=True)
-        ssim_match = re.search(r"All:(\d+\.\d+)", ssim_result.stderr)
-        ssim = float(ssim_match.group(1)) if ssim_match else 0
+            # 執行 SSIM
+            ssim_result = subprocess.run(ssim_cmd, capture_output=True, text=True, check=True)
+            ssim_match = re.search(r"All:(\d+\.\d+)", ssim_result.stderr)
+            ssim = float(ssim_match.group(1)) if ssim_match else 0
 
         return {
             "psnr": psnr,
