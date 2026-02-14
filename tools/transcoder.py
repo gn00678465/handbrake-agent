@@ -7,6 +7,8 @@ from typing import Any, Dict
 
 from tqdm import tqdm
 
+from tools.sleep_guard import prevent_sleep
+
 
 def _get_duration(path: str) -> float:
     """取得影片時長（秒）"""
@@ -68,30 +70,31 @@ def transcode_with_ffmpeg(
         total = duration_limit if duration_limit is not None else _get_duration(input_path)
         process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
-        last_elapsed = 0.0
-        with tqdm(total=total, unit="s", unit_scale=True, desc="FFmpeg 轉碼中", dynamic_ncols=True) as pbar:
-            buf = b""
-            while True:
-                chunk = process.stderr.read(256)
-                if not chunk:
-                    break
-                buf += chunk
-                parts = re.split(b"[\r\n]", buf)
-                buf = parts[-1]
-                for segment in parts[:-1]:
-                    line = segment.decode("utf-8", errors="ignore")
-                    m = re.search(r"time=(\d+):(\d+):(\d+\.\d+)", line)
-                    if m:
-                        h, mi, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
-                        elapsed = h * 3600 + mi * 60 + s
-                        increment = elapsed - last_elapsed
-                        if increment > 0:
-                            pbar.update(min(increment, total - pbar.n))
-                            last_elapsed = elapsed
-            # 確保進度條滿格
-            remaining = total - pbar.n
-            if remaining > 0:
-                pbar.update(remaining)
+        with prevent_sleep():
+            last_elapsed = 0.0
+            with tqdm(total=total, unit="s", unit_scale=True, desc="FFmpeg 轉碼中", dynamic_ncols=True) as pbar:
+                buf = b""
+                while True:
+                    chunk = process.stderr.read(256)
+                    if not chunk:
+                        break
+                    buf += chunk
+                    parts = re.split(b"[\r\n]", buf)
+                    buf = parts[-1]
+                    for segment in parts[:-1]:
+                        line = segment.decode("utf-8", errors="ignore")
+                        m = re.search(r"time=(\d+):(\d+):(\d+\.\d+)", line)
+                        if m:
+                            h, mi, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
+                            elapsed = h * 3600 + mi * 60 + s
+                            increment = elapsed - last_elapsed
+                            if increment > 0:
+                                pbar.update(min(increment, total - pbar.n))
+                                last_elapsed = elapsed
+                # 確保進度條滿格
+                remaining = total - pbar.n
+                if remaining > 0:
+                    pbar.update(remaining)
 
         process.wait()
         if process.returncode != 0:
@@ -157,35 +160,36 @@ def transcode_with_handbrake(
         # HandBrake 將進度輸出至 stdout（格式：Encoding: task 1 of 1, XX.XX %）
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
-        last_pct = 0.0
-        with tqdm(
-            total=100.0,
-            unit="%",
-            desc="HandBrake 轉碼中",
-            dynamic_ncols=True,
-            bar_format="{desc}: {percentage:.1f}%|{bar}| [{elapsed}<{remaining}]",
-        ) as pbar:
-            buf = b""
-            while True:
-                chunk = process.stdout.read(256)
-                if not chunk:
-                    break
-                buf += chunk
-                parts = re.split(b"[\r\n]", buf)
-                buf = parts[-1]
-                for segment in parts[:-1]:
-                    line = segment.decode("utf-8", errors="ignore")
-                    m = re.search(r"(\d+\.\d+) %", line)
-                    if m:
-                        pct = float(m.group(1))
-                        increment = pct - last_pct
-                        if increment > 0:
-                            pbar.update(min(increment, 100.0 - pbar.n))
-                            last_pct = pct
-            # 確保進度條滿格
-            remaining = 100.0 - pbar.n
-            if remaining > 0:
-                pbar.update(remaining)
+        with prevent_sleep():
+            last_pct = 0.0
+            with tqdm(
+                total=100.0,
+                unit="%",
+                desc="HandBrake 轉碼中",
+                dynamic_ncols=True,
+                bar_format="{desc}: {percentage:.1f}%|{bar}| [{elapsed}<{remaining}]",
+            ) as pbar:
+                buf = b""
+                while True:
+                    chunk = process.stdout.read(256)
+                    if not chunk:
+                        break
+                    buf += chunk
+                    parts = re.split(b"[\r\n]", buf)
+                    buf = parts[-1]
+                    for segment in parts[:-1]:
+                        line = segment.decode("utf-8", errors="ignore")
+                        m = re.search(r"(\d+\.\d+) %", line)
+                        if m:
+                            pct = float(m.group(1))
+                            increment = pct - last_pct
+                            if increment > 0:
+                                pbar.update(min(increment, 100.0 - pbar.n))
+                                last_pct = pct
+                # 確保進度條滿格
+                remaining = 100.0 - pbar.n
+                if remaining > 0:
+                    pbar.update(remaining)
 
         process.wait()
         if process.returncode != 0:
