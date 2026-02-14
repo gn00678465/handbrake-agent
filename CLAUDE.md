@@ -77,6 +77,30 @@ Progress bars are used only in two places:
 
 After the `while` read loop ends, always call `pbar.update(total - pbar.n)` before `process.wait()` to ensure 100% display on early exit.
 
+### Versioning
+
+`pyproject.toml` is the single source of truth. `cli/flags/version.py` reads it at runtime via `importlib.metadata.version("handbrake-agent")`.
+
+To bump the version, edit **only** `pyproject.toml`:
+
+```toml
+[project]
+version = "1.1.0"
+```
+
+Then reinstall the package so the metadata is updated:
+
+```bash
+uv sync
+```
+
+Verify with:
+
+```bash
+uv run main.py --version
+# handbrake-agent 1.1.0
+```
+
 ### Key Constants
 
 ```python

@@ -16,6 +16,7 @@ from cli.flags import (
     preview,
     prompt,
     verify,
+    version,
     vmaf,
     vmaf_feedback,
     yes,
@@ -421,6 +422,7 @@ def _run_main():
     preview.add_to(parser, include_toggle=False)
     model.add_to(parser)
     prompt.add_to(parser)
+    version.add_to(parser)
     args = parser.parse_args()
     _run_workflow(args)
 
@@ -460,6 +462,7 @@ def _legacy_main():
     auto_loop.add_to(parser)
     prompt.add_to(parser)
     params_file.add_to(parser)
+    version.add_to(parser)
     args = parser.parse_args()
 
     transcoder = VideoTranscoder()
