@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "github-copilot-sdk>=0.1.0",
+    "tqdm>=4.67.3",
 ]
 
 [project.scripts]

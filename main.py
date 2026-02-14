@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
+from tqdm import tqdm
+
 from cli.flags import (
     auto_loop,
     batch,
@@ -77,7 +79,7 @@ class VideoTranscoder:
             output_path = input_file.parent / f"{input_file.stem}{suffix}{input_file.suffix}"
 
         mode_text = f"【預覽模式 - {preview_duration}秒】" if preview_mode else ""
-        print(f"處理影片：{input_path} {mode_text}")
+        print(f"\n處理影片：{input_path} {mode_text}")
         print("=" * 60)
 
         # 1. 取得影片資訊
@@ -90,9 +92,7 @@ class VideoTranscoder:
             print("\n[2/5] 使用指定參數（略過 AI 分析）...")
             params = params_override
         else:
-            print("\n[2/5] 使用 AI 分析最佳轉碼參數 (GitHub Copilot SDK)...")
-            if model != "gpt5-mini":
-                print(f"  使用模型: {model}")
+            print(f"\n[2/5] 使用 AI 分析最佳轉碼參數（模型：{model}）...")
             if extra_prompt:
                 print(f"  附加 prompt: {extra_prompt[:60]}{'...' if len(extra_prompt) > 60 else ''}")
             try:
@@ -235,11 +235,7 @@ class VideoTranscoder:
 
         print(f"找到 {len(video_files)} 個影片檔案")
 
-        for i, video_file in enumerate(video_files, 1):
-            print(f"\n{'=' * 60}")
-            print(f"處理第 {i}/{len(video_files)} 個影片")
-            print(f"{'=' * 60}")
-
+        for video_file in tqdm(video_files, desc="批次處理", unit="個", dynamic_ncols=True):
             output_path = video_file.parent / "converted" / f"{video_file.stem}_h265{video_file.suffix}"
             output_path.parent.mkdir(exist_ok=True)
 
@@ -257,7 +253,7 @@ class VideoTranscoder:
                     extra_prompt=extra_prompt,
                 )
             except Exception as e:
-                print(f"處理失敗：{e}")
+                tqdm.write(f"處理失敗：{e}")
 
 
 def _run_workflow(args):
@@ -554,8 +550,7 @@ def _legacy_main():
                     print(f"[Auto Loop] 最佳參數已儲存：{result['params_path']}")
                 break
 
-        print(f"\n{'=' * 60}")
-        print("[Auto Loop] 迭代完成")
+        print("\n[Auto Loop] 迭代完成")
         print(f"{'=' * 60}")
 
     elif args.batch:

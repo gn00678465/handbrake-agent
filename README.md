@@ -15,6 +15,7 @@
 - [安裝](#安裝)
 - [CLI 工具安裝](#-cli-工具安裝可選)
 - [使用方法](#使用方法)
+  - [run 子命令](#run-子命令一鍵完整工作流程)
 - [專案結構](#專案結構)
 - [套件管理](#套件管理-uv)
 - [測試](#測試)
@@ -317,48 +318,111 @@ python main.py ./videos/ --batch --preview
 
 ```bash
 # 使用 FFmpeg 而非 HandBrake
-python main.py input_video.mp4 --ffmpeg
+uv run main.py input_video.mp4 --ffmpeg
 
 # 停用品質驗證（加快處理速度）
-python main.py input_video.mp4 --no-verify
+uv run main.py input_video.mp4 --no-verify
 
-# 使用 VMAF 品質驗證（更準確但較慢）
-python main.py input_video.mp4 --vmaf
+# 啟用 VMAF 品質驗證（逐幀精確）
+uv run main.py input_video.mp4 --vmaf
+
+# 啟用 VMAF 並設定取樣間隔（每 5 幀取樣，速度約 5x，誤差 ±1-2 分）
+uv run main.py input_video.mp4 --vmaf 5
 
 # 批次處理資料夾中的所有影片
-python main.py /path/to/videos/ --batch
-
-# 組合使用：FFmpeg + VMAF 驗證 + 預覽
-python main.py input.mp4 --ffmpeg --vmaf --preview
-
-# 批次處理（無驗證）+ 預覽
-python main.py ./videos/ --batch --no-verify --preview
+uv run main.py /path/to/videos/ --batch
 
 # 自動確認（不需要手動輸入 y/n）
-python main.py input.mp4 --yes
+uv run main.py input.mp4 --yes
+
+# 指定 AI 模型
+uv run main.py input.mp4 --model gpt-4o
+
+# 附加自訂 prompt 引導 AI 分析
+uv run main.py input.mp4 --prompt "這是動畫內容，優先保留色彩純度"
 
 # 非互動式執行（CI/腳本環境適用）
-python main.py input.mp4 --preview --ffmpeg --no-verify --yes
+uv run main.py input.mp4 --preview --ffmpeg --no-verify --yes
 
 # AI 參數精調：提供上次的 vmaf.json，讓 AI 依品質指標調整參數
-python main.py input.mp4 --preview --yes --vmaf-feedback vmaf.json
+uv run main.py input.mp4 --preview --yes --vmaf-feedback vmaf.json
+
+# 載入先前儲存的 params.json，略過 AI 分析直接轉碼
+uv run main.py input.mp4 --params-file params_20260214_120000.json --yes
+
+# 自動迭代優化（最多 3 次 preview + VMAF，自動停止）
+uv run main.py input.mp4 --auto-loop --preview --vmaf --yes
+
+# 指定最多迭代 2 次
+uv run main.py input.mp4 --auto-loop 2 --preview --vmaf --yes
 ```
 
 ### 完整參數說明
 
-```bash
-python main.py --help
+```
+uv run main.py --help
 
-參數：
+positional arguments:
   input                      輸入影片路徑或資料夾
+
+options:
   --batch                    批次處理模式
   --ffmpeg                   使用 FFmpeg 而非 HandBrake
   --no-verify                停用品質驗證
-  --vmaf                     使用 VMAF 驗證（預設使用 PSNR/SSIM）
-  --preview                  預覽模式：只轉換開頭部分以快速測試參數
-  --preview-duration SECONDS 預覽模式的時長（秒），預設為 30 秒
+  --vmaf [N]                 啟用 VMAF 品質驗證
+                               不帶數字：N=1，逐幀精確
+                               --vmaf 5：每 5 幀取樣，速度 ~5x，誤差 ±1-2 分
+  --preview                  預覽模式：只轉換影片開頭部分
+                               （vmaf json 與 params 僅在此模式下保留）
+  --preview-duration SECONDS 預覽模式的時長（秒，預設 30 秒）
   --yes, -y                  自動確認執行轉碼，不需要手動輸入 y/n
   --vmaf-feedback VMAF_JSON  提供上次轉碼的 vmaf.json，讓 AI 依品質指標調整參數建議
+  --model MODEL              指定 AI 模型（預設：gpt5-mini）
+  --auto-loop [N]            自動連續執行 preview + VMAF 迭代
+                               不帶數字：預設執行 3 次
+                               --auto-loop 2：最多執行 2 次
+  --prompt TEXT, -p TEXT     附加自訂提示詞，會加在 AI 分析 prompt 後面
+  --params-file PARAMS_JSON  載入先前儲存的 params.json，略過 AI 分析
+```
+
+### run 子命令（一鍵完整工作流程）
+
+`run` 子命令整合三個階段，適合直接得到最終結果：
+
+**Phase 1**：自動迭代 preview + VMAF，找到最佳參數
+**Phase 2**：使用最佳參數進行完整轉檔 + 品質驗證
+**Phase 3**：清理所有暫存檔（preview、vmaf json、params json）
+
+```bash
+# 最簡用法（預設 2 次迭代）
+uv run main.py run video.mp4
+
+# 使用全域命令
+hba run video.mp4
+
+# 指定 VMAF 取樣間隔（加速驗證）
+hba run video.mp4 --vmaf 5
+
+# 指定最多迭代次數
+hba run video.mp4 --auto-loop 3
+
+# 組合使用
+hba run video.mp4 --vmaf 5 --model gpt-4o --prompt "優先保留細節"
+```
+
+```
+uv run main.py run --help
+
+positional arguments:
+  input                      輸入影片路徑
+
+options:
+  --ffmpeg                   使用 FFmpeg 而非 HandBrake
+  --vmaf [N]                 VMAF 取樣間隔（不帶數字=1 逐幀；--vmaf 5 每 5 幀）
+  --auto-loop N              Preview 迭代次數（預設 2）
+  --preview-duration SECONDS 預覽時長（秒，預設 30 秒）
+  --model MODEL              指定 AI 模型（預設：gpt5-mini）
+  --prompt TEXT, -p TEXT     附加自訂提示詞
 ```
 
 ### 工作流程
@@ -376,7 +440,7 @@ python main.py --help
 
 ```bash
 # 第一輪：使用預設參數轉碼並產生 vmaf.json
-hba video.mp4 --preview --yes --vmaf
+hba video.mp4 --preview --vmaf --yes
 
 # 查看 VMAF 診斷建議（分數 < 70 時自動顯示）
 # 範例輸出：
@@ -385,10 +449,13 @@ hba video.mp4 --preview --yes --vmaf
 #     - ADM2=0.878 -> 輕度邊緣模糊，建議改用 slow 或 slower preset
 
 # 第二輪：帶入 vmaf.json，AI 自動依指標調整參數
-hba video.mp4 --preview --yes --vmaf --vmaf-feedback vmaf.json
+hba video.mp4 --preview --vmaf --yes --vmaf-feedback vmaf.json
 
 # 確認改善後，移除 --preview 進行完整轉碼
-hba video.mp4 --yes --vmaf --vmaf-feedback vmaf.json
+hba video.mp4 --vmaf --yes --vmaf-feedback vmaf.json
+
+# 或直接使用 run 子命令（自動完成以上所有步驟）
+hba run video.mp4 --vmaf 5
 ```
 
 **AI 依據 VMAF sub-metrics 的調整邏輯：**

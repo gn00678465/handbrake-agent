@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
+from tqdm import tqdm
+
 
 def _get_duration(path: str) -> float:
     """取得影片時長（秒）"""
@@ -73,31 +75,39 @@ def calculate_vmaf(
             stderr=subprocess.PIPE,
         )
 
-        # 即時解析 ffmpeg stderr，顯示 VMAF 計算進度
-        buf = b""
-        while True:
-            chunk = process.stderr.read(256)
-            if not chunk:
-                break
-            buf += chunk
-            # ffmpeg 進度使用 \r 覆寫同一行，也可能有 \n
-            parts = re.split(b"[\r\n]", buf)
-            buf = parts[-1]
-            for segment in parts[:-1]:
-                line = segment.decode("utf-8", errors="ignore")
-                m = re.search(r"time=(\d+):(\d+):(\d+\.\d+)", line)
-                if m:
-                    h, mi, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
-                    elapsed = h * 3600 + mi * 60 + s
-                    pct = min(100.0, elapsed / distorted_duration * 100)
-                    print(
-                        f"\r  VMAF 計算中... {pct:5.1f}%  ({elapsed:.1f}s / {distorted_duration:.1f}s)",
-                        end="",
-                        flush=True,
-                    )
+        # 即時解析 ffmpeg stderr，以 tqdm 顯示 VMAF 計算進度
+        last_elapsed = 0.0
+        with tqdm(
+            total=distorted_duration,
+            unit="s",
+            unit_scale=True,
+            desc="VMAF 計算中",
+            dynamic_ncols=True,
+        ) as pbar:
+            buf = b""
+            while True:
+                chunk = process.stderr.read(256)
+                if not chunk:
+                    break
+                buf += chunk
+                parts = re.split(b"[\r\n]", buf)
+                buf = parts[-1]
+                for segment in parts[:-1]:
+                    line = segment.decode("utf-8", errors="ignore")
+                    m = re.search(r"time=(\d+):(\d+):(\d+\.\d+)", line)
+                    if m:
+                        h, mi, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
+                        elapsed = h * 3600 + mi * 60 + s
+                        increment = elapsed - last_elapsed
+                        if increment > 0:
+                            pbar.update(min(increment, distorted_duration - pbar.n))
+                            last_elapsed = elapsed
+            # 確保進度條滿格
+            remaining = distorted_duration - pbar.n
+            if remaining > 0:
+                pbar.update(remaining)
 
         process.wait()
-        print()  # 換行，清除進度列
 
         if process.returncode != 0:
             raise subprocess.CalledProcessError(process.returncode, cmd)
