@@ -1,6 +1,6 @@
 """--model flag：指定 Copilot SDK 使用的 AI 模型"""
 
-DEFAULT_MODEL = "gpt5-mini"
+DEFAULT_MODEL = "gpt-5-mini"
 
 
 def add_to(parser, default: str = DEFAULT_MODEL):

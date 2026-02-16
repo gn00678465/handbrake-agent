@@ -48,7 +48,7 @@ class VideoTranscoder:
         preview_duration: int = 30,
         auto_confirm: bool = False,
         vmaf_feedback: Dict[str, Any] = None,
-        model: str = "gpt5-mini",
+        model: str = "gpt-5-mini",
         extra_prompt: str = None,
         params_override: Dict[str, Any] = None,
         vmaf_subsample: int = 1,
@@ -87,6 +87,12 @@ class VideoTranscoder:
         print("\n[1/5] 取得影片資訊...")
         video_info = get_video_info_ffprobe(input_path)
         file_size_mb = input_file.stat().st_size / (1024 * 1024)
+
+        # 檢查影像編碼是否已為 H.265/HEVC，若是則跳過
+        video_codec = video_info.get("video", {}).get("codec", "").lower()
+        if video_codec in ("hevc", "h265"):
+            print(f"\n⚠️  影片已採用 H.265/HEVC 編碼（codec: {video_codec}），無需重新轉碼，略過處理。")
+            return {}
 
         # 2. 參數取得：使用覆寫參數或 AI 分析
         if params_override:
@@ -227,7 +233,7 @@ class VideoTranscoder:
         preview_mode: bool = False,
         preview_duration: int = 30,
         auto_confirm: bool = False,
-        model: str = "gpt5-mini",
+        model: str = "gpt-5-mini",
         extra_prompt: str = None,
     ):
         """批次處理資料夾中的影片"""

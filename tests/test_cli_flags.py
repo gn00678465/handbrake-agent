@@ -106,7 +106,7 @@ class TestModel:
         p = make_parser()
         model.add_to(p)
         args = p.parse_args([])
-        assert args.model == "gpt5-mini"
+        assert args.model == "gpt-5-mini"
 
     def test_custom_default(self):
         p = make_parser()
@@ -121,7 +121,7 @@ class TestModel:
         assert args.model == "claude-3"
 
     def test_default_model_constant(self):
-        assert model.DEFAULT_MODEL == "gpt5-mini"
+        assert model.DEFAULT_MODEL == "gpt-5-mini"
 
 
 # ── prompt ────────────────────────────────────────────────────────────────────
@@ -410,7 +410,7 @@ class TestComposed:
         assert args.preview_duration == 30
         assert args.yes is False
         assert args.vmaf_feedback is None
-        assert args.model == "gpt5-mini"
+        assert args.model == "gpt-5-mini"
         assert args.auto_loop is None
         assert args.prompt is None
         assert args.params_file is None
