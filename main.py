@@ -129,16 +129,16 @@ class VideoTranscoder:
                 return {}
 
         # 4. 執行轉碼
-        transcode_text = "[3/5] 執行轉碼（多段採樣預覽）..." if preview_mode else "[3/5] 執行轉碼..."
+        transcode_text = "[3/5] 執行轉碼（預覽）..." if preview_mode else "[3/5] 執行轉碼..."
         print(f"\n{transcode_text}")
         if use_ffmpeg:
+            # --ffmpeg + --preview：啟用多段採樣；單獨 --ffmpeg：普通轉碼
             success = transcode_with_ffmpeg(
                 input_path, str(output_path), params,
                 duration_limit=preview_duration if preview_mode else None,
-                multi_segment=preview_mode,
+                multi_segment=preview_mode and use_ffmpeg,
             )
         else:
-            # HandBrake 目前尚未實作多段採樣，先退回普通預覽
             success = transcode_with_handbrake(
                 input_path, str(output_path), params,
                 duration_limit=preview_duration if preview_mode else None,

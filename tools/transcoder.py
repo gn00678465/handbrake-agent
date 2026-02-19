@@ -38,19 +38,18 @@ def transcode_with_ffmpeg(
     resolution = params.get("resolution", "keep")
 
     if multi_segment and duration_limit:
-        # 多段採樣邏輯：10%, 50%, 80% 各取 duration_limit // 3 秒
+        # 多段採樣邏輯：10%, 50%, 80% 各取 duration_limit / 3 秒
+        # preview 僅供 VMAF 使用，不需要音訊（-an），避免無音軌時 asplit 失敗
         total_dur = _get_duration(input_path)
         seg_dur = duration_limit / 3
         starts = [total_dur * 0.1, total_dur * 0.5, total_dur * 0.8]
 
-        # 先 split，再各自 trim；同一個 [0:v]/[0:a] 不能被多次消耗
-        filter_str = "[0:v]split=3[sv0][sv1][sv2];[0:a]asplit=3[sa0][sa1][sa2];"
+        # 只處理影像：split → trim → concat
+        filter_str = "[0:v]split=3[sv0][sv1][sv2];"
         for i, start in enumerate(starts):
             filter_str += f"[sv{i}]trim=start={start}:duration={seg_dur},setpts=PTS-STARTPTS[v{i}];"
-            filter_str += f"[sa{i}]atrim=start={start}:duration={seg_dur},asetpts=PTS-STARTPTS[a{i}];"
-        filter_str += "[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1[outv][outa]"
+        filter_str += "[v0][v1][v2]concat=n=3:v=1:a=0[outv]"
 
-        # 解析度縮放直接接在 concat 輸出後，避免 list 索引操作
         if resolution != "keep":
             filter_str += f";[outv]scale={resolution}[finalv]"
             map_video = "[finalv]"
@@ -60,9 +59,9 @@ def transcode_with_ffmpeg(
         cmd = [
             "ffmpeg", "-y", "-i", input_path,
             "-filter_complex", filter_str,
-            "-map", map_video, "-map", "[outa]",
+            "-map", map_video,
             "-c:v", "libx265", "-crf", str(crf), "-preset", preset,
-            "-c:a", "aac", "-b:a", "128k",  # 拼接後音訊需重新編碼
+            "-an",  # preview 不需要音訊
             output_path,
         ]
         total = duration_limit
