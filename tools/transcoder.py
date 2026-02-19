@@ -18,7 +18,7 @@ def _get_duration(path: str) -> float:
 
 
 def transcode_with_ffmpeg(
-    input_path: str, output_path: str, params: Dict[str, Any], duration_limit: int = None
+    input_path: str, output_path: str, params: Dict[str, Any], duration_limit: int = None, multi_segment: bool = False
 ) -> bool:
     """
     使用 FFmpeg 轉碼影片
@@ -28,6 +28,7 @@ def transcode_with_ffmpeg(
         output_path: 輸出影片路徑
         params: 轉碼參數（包含 CRF, preset, resolution 等）
         duration_limit: 時長限制（秒），用於預覽模式
+        multi_segment: 是否使用多段採樣（20%, 50%, 80% 各 10 秒）
 
     Returns:
         成功返回 True，失敗返回 False
@@ -36,39 +37,46 @@ def transcode_with_ffmpeg(
     preset = params.get("preset", "medium")
     resolution = params.get("resolution", "keep")
 
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        input_path,
-    ]
+    if multi_segment and duration_limit:
+        # 多段採樣邏輯：10%, 50%, 80% 各取 duration_limit // 3 秒
+        total_dur = _get_duration(input_path)
+        seg_dur = duration_limit / 3
+        starts = [total_dur * 0.1, total_dur * 0.5, total_dur * 0.8]
 
-    # 添加時長限制（預覽模式）
-    if duration_limit is not None:
-        cmd.extend(["-t", str(duration_limit)])
+        # 先 split，再各自 trim；同一個 [0:v]/[0:a] 不能被多次消耗
+        filter_str = "[0:v]split=3[sv0][sv1][sv2];[0:a]asplit=3[sa0][sa1][sa2];"
+        for i, start in enumerate(starts):
+            filter_str += f"[sv{i}]trim=start={start}:duration={seg_dur},setpts=PTS-STARTPTS[v{i}];"
+            filter_str += f"[sa{i}]atrim=start={start}:duration={seg_dur},asetpts=PTS-STARTPTS[a{i}];"
+        filter_str += "[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1[outv][outa]"
 
-    cmd.extend(
-        [
-            "-c:v",
-            "libx265",
-            "-crf",
-            str(crf),
-            "-preset",
-            preset,
-            "-c:a",
-            "copy",  # 音訊直接複製，不重新編碼
+        # 解析度縮放直接接在 concat 輸出後，避免 list 索引操作
+        if resolution != "keep":
+            filter_str += f";[outv]scale={resolution}[finalv]"
+            map_video = "[finalv]"
+        else:
+            map_video = "[outv]"
+
+        cmd = [
+            "ffmpeg", "-y", "-i", input_path,
+            "-filter_complex", filter_str,
+            "-map", map_video, "-map", "[outa]",
+            "-c:v", "libx265", "-crf", str(crf), "-preset", preset,
+            "-c:a", "aac", "-b:a", "128k",  # 拼接後音訊需重新編碼
+            output_path,
         ]
-    )
-
-    # 處理解析度調整
-    if resolution != "keep":
-        cmd.extend(["-vf", f"scale={resolution}"])
-
-    cmd.append(output_path)
-
-    try:
+        total = duration_limit
+    else:
+        cmd = ["ffmpeg", "-y", "-i", input_path]
+        if duration_limit is not None:
+            cmd.extend(["-t", str(duration_limit)])
+        cmd.extend(["-c:v", "libx265", "-crf", str(crf), "-preset", preset, "-c:a", "copy"])
+        if resolution != "keep":
+            cmd.extend(["-vf", f"scale={resolution}"])
+        cmd.append(output_path)
         total = duration_limit if duration_limit is not None else _get_duration(input_path)
 
+    try:
         with prevent_sleep():
             process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             last_elapsed = 0.0

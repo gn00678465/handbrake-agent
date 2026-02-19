@@ -129,15 +129,19 @@ class VideoTranscoder:
                 return {}
 
         # 4. 執行轉碼
-        transcode_text = f"[3/5] 執行轉碼（預覽前 {preview_duration} 秒）..." if preview_mode else "[3/5] 執行轉碼..."
+        transcode_text = "[3/5] 執行轉碼（多段採樣預覽）..." if preview_mode else "[3/5] 執行轉碼..."
         print(f"\n{transcode_text}")
         if use_ffmpeg:
             success = transcode_with_ffmpeg(
-                input_path, str(output_path), params, duration_limit=preview_duration if preview_mode else None
+                input_path, str(output_path), params,
+                duration_limit=preview_duration if preview_mode else None,
+                multi_segment=preview_mode,
             )
         else:
+            # HandBrake 目前尚未實作多段採樣，先退回普通預覽
             success = transcode_with_handbrake(
-                input_path, str(output_path), params, duration_limit=preview_duration if preview_mode else None
+                input_path, str(output_path), params,
+                duration_limit=preview_duration if preview_mode else None,
             )
 
         if not success:
@@ -151,7 +155,11 @@ class VideoTranscoder:
             print("\n[4/5] 品質驗證...")
             try:
                 if quality_method == "vmaf":
-                    quality_scores = calculate_vmaf(input_path, str(output_path), n_subsample=vmaf_subsample)
+                    quality_scores = calculate_vmaf(
+                        input_path, str(output_path),
+                        n_subsample=vmaf_subsample,
+                        is_preview=preview_mode and use_ffmpeg,
+                    )
                     vmaf_json_path = quality_scores.get("_vmaf_json_path", "") if quality_scores else None
                 else:
                     quality_scores = calculate_psnr_ssim(input_path, str(output_path))
@@ -345,9 +353,8 @@ def _run_workflow(args):
             break
 
         if prev_vmaf is not None and abs(loop_vmaf - prev_vmaf) < 5:
-            print(
-                f"[Run] VMAF 改善幅度不足（{prev_vmaf:.2f} → {loop_vmaf:.2f}，差距 {abs(loop_vmaf - prev_vmaf):.2f} < 5），停止迭代"
-            )
+            delta = abs(loop_vmaf - prev_vmaf)
+            print(f"[Run] VMAF 改善幅度不足（{prev_vmaf:.2f} → {loop_vmaf:.2f}，差距 {delta:.2f} < 5），停止迭代")
             break
 
         prev_vmaf = loop_vmaf

@@ -24,6 +24,7 @@ def calculate_vmaf(
     reference_path: str,
     distorted_path: str,
     n_subsample: int = 1,
+    is_preview: bool = False,
 ) -> Dict[str, float]:
     """
     使用 VMAF 計算影片品質
@@ -31,39 +32,64 @@ def calculate_vmaf(
     Args:
         reference_path: 原始影片路徑
         distorted_path: 轉碼後影片路徑
-        n_subsample: 每 N 幀取樣一次（預設 1 = 每幀都算；設 4-5 可大幅加速，誤差 ±1-2 分）
+        n_subsample: 每 N 幀取樣一次
+        is_preview: 是否為預覽模式（若是，則對原始片執行相同的多段採樣拼接以對齊）
 
     Returns:
         VMAF 分數字典
     """
-    # 取得 distorted 時長，限制 reference 只比對相同長度，避免 VMAF 對空幀計分
     distorted_duration = _get_duration(distorted_path)
+    ref_total_duration = _get_duration(reference_path) if is_preview else None
 
-    # 以 timestamp 命名，避免多次執行互相覆蓋
+    # 以 timestamp 命名
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     vmaf_json_path = str(Path(distorted_path).parent / f"vmaf_{timestamp}.json")
 
     n_threads = os.cpu_count() or 1
     libvmaf_opts = f"log_fmt=json:log_path={vmaf_json_path}:n_threads={n_threads}:n_subsample={n_subsample}"
 
-    cmd = [
-        "ffmpeg",
-        "-i",
-        distorted_path,
-        "-t",
-        str(distorted_duration),
-        "-i",
-        reference_path,
-        "-lavfi",
-        (
+    if is_preview:
+        # 預覽模式：用 -ss/-t 各自 seek reference 的三段，再 concat 對齊 distorted
+        # 每段起始點與 transcoder.py 完全一致（10%, 50%, 80%）
+        seg_dur = distorted_duration / 3
+        starts = [ref_total_duration * 0.1, ref_total_duration * 0.5, ref_total_duration * 0.8]
+
+        # inputs 1/2/3 = reference 的三個片段；不使用 split，避免大量緩衝
+        filter_complex = (
+            "[1:v]setpts=PTS-STARTPTS[r0];"
+            "[2:v]setpts=PTS-STARTPTS[r1];"
+            "[3:v]setpts=PTS-STARTPTS[r2];"
+            "[r0][r1][r2]concat=n=3:v=1:a=0[refv];"
+            "[0:v]scale=1920:1080:flags=bicubic[dis];"
+            "[refv]scale=1920:1080:flags=bicubic[ref];"
+            f"[dis][ref]libvmaf={libvmaf_opts}"
+        )
+        cmd = [
+            "ffmpeg",
+            "-i", distorted_path,
+            "-ss", str(starts[0]), "-t", str(seg_dur), "-i", reference_path,
+            "-ss", str(starts[1]), "-t", str(seg_dur), "-i", reference_path,
+            "-ss", str(starts[2]), "-t", str(seg_dur), "-i", reference_path,
+            "-filter_complex", filter_complex,
+            "-f", "null",
+            "-",
+        ]
+    else:
+        lavfi = (
             "[0:v]scale=1920:1080:flags=bicubic[dis];"
             "[1:v]scale=1920:1080:flags=bicubic[ref];"
             f"[dis][ref]libvmaf={libvmaf_opts}"
-        ),
-        "-f",
-        "null",
-        "-",
-    ]
+        )
+        # -t 放在第二個 -i 前，限制 reference 只讀取與 distorted 等長，防止空幀計分
+        cmd = [
+            "ffmpeg",
+            "-i", distorted_path,
+            "-t", str(distorted_duration),
+            "-i", reference_path,
+            "-lavfi", lavfi,
+            "-f", "null",
+            "-",
+        ]
 
     if n_subsample > 1:
         print(
@@ -79,6 +105,7 @@ def calculate_vmaf(
                 stderr=subprocess.PIPE,
             )
             last_elapsed = 0.0
+            stderr_lines: list = []
             with tqdm(
                 total=distorted_duration,
                 unit="s",
@@ -96,6 +123,7 @@ def calculate_vmaf(
                     buf = parts[-1]
                     for segment in parts[:-1]:
                         line = segment.decode("utf-8", errors="ignore")
+                        stderr_lines.append(line)
                         m = re.search(r"time=(\d+):(\d+):(\d+\.\d+)", line)
                         if m:
                             h, mi, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
@@ -112,7 +140,8 @@ def calculate_vmaf(
         process.wait()
 
         if process.returncode != 0:
-            raise subprocess.CalledProcessError(process.returncode, cmd)
+            tail = "\n".join(stderr_lines[-20:])
+            raise subprocess.CalledProcessError(process.returncode, cmd, stderr=tail)
 
         with open(vmaf_json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
