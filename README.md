@@ -28,6 +28,8 @@
 ## 📚 其他文檔
 
 - [docs/cli_reference.md](docs/cli_reference.md) - 完整的 CLI 參數參考指南
+- [docs/hba_cli.md](docs/hba_cli.md) - `hba` CLI 指令詳細幫助
+- [docs/hba_run_cli.md](docs/hba_run_cli.md) - `hba run` 指令詳細幫助
 - [AGENTS.md](AGENTS.md) - Agent 開發與架構說明
 
 ---
