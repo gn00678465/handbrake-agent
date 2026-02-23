@@ -56,6 +56,7 @@ hba run [input] [options]
 | `--preview-duration SECONDS` | 預覽秒數（預設 30 秒）。 |
 | `--model MODEL` | 指定 AI 模型。 |
 | `--prompt`, `-p TEXT` | 額外提示詞。 |
+| `--params-file PARAMS_JSON` | 直接載入預存參數檔（JSON），若提供則跳過 Phase 1 迭代。 |
 
 ---
 

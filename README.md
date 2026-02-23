@@ -2,9 +2,9 @@
 
 使用 GitHub Copilot SDK 提供 AI 驅動的影片轉碼參數優化建議，專為高品質、高效率轉碼設計。
 
-**版本：** 1.3.0
+**版本：** 1.4.0
 **狀態：** ✅ 生產就緒
-**更新：** 2026-02-20
+**更新：** 2026-02-23
 
 ---
 
@@ -112,7 +112,7 @@ uv tool install .
 
 # 驗證安裝
 hba --version
-# handbrake-agent 1.3.0
+# handbrake-agent 1.4.0
 ```
 
 ### 更新全域安裝
@@ -159,6 +159,9 @@ hba run video.mp4
 
 # 指定迭代次數與 VMAF 取樣速度
 hba run video.mp4 --auto-loop 3 --vmaf 5
+
+# 【新功能】帶入已知最佳參數檔，直接跳過 Phase 1 進入轉檔流程
+hba run video.mp4 --params-file "params_20260223.json"
 ```
 
 ### 其他進階選項
