@@ -288,76 +288,87 @@ def _run_workflow(args):
     vmaf_json_files: list = []
     params_json_files: list = []
 
-    # ── Phase 1: Auto-loop preview ──────────────────────────────────────
-    print(f"\n{'=' * 60}")
-    print(f"[Run] Phase 1: 自動迭代尋找最佳參數（最多 {max_loop} 次）")
-    print(f"{'=' * 60}")
-
-    current_vmaf_json = None
+    # 讀取 --params-file (若提供則跳過 Phase 1)
     best_params = None
-    prev_vmaf = None
+    if getattr(args, "params_file", None):
+        try:
+            with open(args.params_file, "r", encoding="utf-8") as f:
+                best_params = json.load(f)
+            print(f"\n[Run] 已提供參數檔案，跳過 Phase 1 迭代：{args.params_file}")
+            print(f"  CRF: {best_params.get('recommended_crf')}  Preset: {best_params.get('preset')}")
+        except Exception as e:
+            print(f"\n[Run] 無法讀取 {args.params_file}: {e}，將進行 AI 分析迭代")
 
-    for iteration in range(1, max_loop + 1):
-        print(f"\n[Run] 第 {iteration}/{max_loop} 次迭代")
+    # ── Phase 1: Auto-loop preview ──────────────────────────────────────
+    if not best_params:
+        print(f"\n{'=' * 60}")
+        print(f"[Run] Phase 1: 自動迭代尋找最佳參數（最多 {max_loop} 次）")
+        print(f"{'=' * 60}")
 
-        # 讀取上一輪的 VMAF 反饋
-        loop_vmaf_feedback = None
-        if current_vmaf_json:
-            try:
-                with open(current_vmaf_json, "r", encoding="utf-8") as f:
-                    vmaf_data = json.load(f)
-                loop_vmaf_feedback = vmaf_data.get("pooled_metrics")
-            except Exception as e:
-                print(f"[Run] 無法讀取 VMAF 反饋: {e}")
+        current_vmaf_json = None
+        prev_vmaf = None
 
-        result = (
-            transcoder.process_video(
-                args.input,
-                use_ffmpeg=args.ffmpeg,
-                verify_quality=True,
-                quality_method="vmaf",
-                preview_mode=True,
-                preview_duration=args.preview_duration,
-                auto_confirm=True,
-                vmaf_feedback=loop_vmaf_feedback,
-                model=args.model,
-                extra_prompt=getattr(args, "prompt", None),
-                vmaf_subsample=vmaf_subsample,
+        for iteration in range(1, max_loop + 1):
+            print(f"\n[Run] 第 {iteration}/{max_loop} 次迭代")
+
+            # 讀取上一輪的 VMAF 反饋
+            loop_vmaf_feedback = None
+            if current_vmaf_json:
+                try:
+                    with open(current_vmaf_json, "r", encoding="utf-8") as f:
+                        vmaf_data = json.load(f)
+                    loop_vmaf_feedback = vmaf_data.get("pooled_metrics")
+                except Exception as e:
+                    print(f"[Run] 無法讀取 VMAF 反饋: {e}")
+
+            result = (
+                transcoder.process_video(
+                    args.input,
+                    use_ffmpeg=args.ffmpeg,
+                    verify_quality=True,
+                    quality_method="vmaf",
+                    preview_mode=True,
+                    preview_duration=args.preview_duration,
+                    auto_confirm=True,
+                    vmaf_feedback=loop_vmaf_feedback,
+                    model=args.model,
+                    extra_prompt=getattr(args, "prompt", None),
+                    vmaf_subsample=vmaf_subsample,
+                )
+                or {}
             )
-            or {}
-        )
 
-        # 追蹤此輪產生的暫存檔
-        out = result.get("output_path")
-        if out and Path(out).exists():
-            preview_files.append(out)
+            # 追蹤此輪產生的暫存檔
+            out = result.get("output_path")
+            if out and Path(out).exists():
+                preview_files.append(out)
 
-        vj = result.get("vmaf_json_path")
-        if vj:
-            vmaf_json_files.append(vj)
-            current_vmaf_json = vj
+            vj = result.get("vmaf_json_path")
+            if vj:
+                vmaf_json_files.append(vj)
+                current_vmaf_json = vj
 
-        pj = result.get("params_path")
-        if pj:
-            params_json_files.append(pj)
+            pj = result.get("params_path")
+            if pj:
+                params_json_files.append(pj)
 
-        # 持續更新最佳參數（取最後一輪的 AI 建議）
-        if result.get("params"):
-            best_params = result["params"]
+            # 持續更新最佳參數（取最後一輪的 AI 建議）
+            if result.get("params"):
+                best_params = result["params"]
 
-        loop_vmaf = (result.get("quality_scores") or {}).get("vmaf", 0)
-        print(f"\n[Run] 第 {iteration} 次 VMAF: {loop_vmaf:.2f}")
+            loop_vmaf = (result.get("quality_scores") or {}).get("vmaf", 0)
+            print(f"\n[Run] 第 {iteration} 次 VMAF: {loop_vmaf:.2f}")
 
-        if loop_vmaf >= VMAF_GOOD_THRESHOLD:
-            print(f"[Run] VMAF {loop_vmaf:.2f} 已達目標 {VMAF_GOOD_THRESHOLD}，停止迭代")
-            break
+            if loop_vmaf >= VMAF_GOOD_THRESHOLD:
+                print(f"[Run] VMAF {loop_vmaf:.2f} 已達目標 {VMAF_GOOD_THRESHOLD}，停止迭代")
+                break
 
-        if prev_vmaf is not None and abs(loop_vmaf - prev_vmaf) < 5:
-            delta = abs(loop_vmaf - prev_vmaf)
-            print(f"[Run] VMAF 改善幅度不足（{prev_vmaf:.2f} → {loop_vmaf:.2f}，差距 {delta:.2f} < 5），停止迭代")
-            break
+            if prev_vmaf is not None and abs(loop_vmaf - prev_vmaf) < 5:
+                delta = abs(loop_vmaf - prev_vmaf)
+                print(f"[Run] VMAF 改善幅度不足（{prev_vmaf:.2f} → {loop_vmaf:.2f}，差距 {delta:.2f} < 5），停止迭代")
+                break
 
-        prev_vmaf = loop_vmaf
+            prev_vmaf = loop_vmaf
 
     if not best_params:
         print("[Run] 無法取得轉碼參數，中止工作流程")
@@ -444,6 +455,7 @@ def _run_main():
     preview.add_to(parser, include_toggle=False)
     model.add_to(parser)
     prompt.add_to(parser)
+    params_file.add_to(parser)
     version.add_to(parser)
     args = parser.parse_args()
     _run_workflow(args)
