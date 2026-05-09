@@ -1,6 +1,6 @@
 [project]
 name = "handbrake-agent"
-version = "1.5.3"
+version = "1.5.2"
 description = "AI-powered video transcoding tool using GitHub Copilot SDK"
 readme = "README.md"
 requires-python = ">=3.11"

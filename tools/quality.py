@@ -48,10 +48,12 @@ def calculate_vmaf(
     vmaf_json_path = str(Path(distorted_path).parent / f"vmaf_{timestamp}.json")
 
     n_threads = os.cpu_count() or 1
-    # ffmpeg filter 語法用 ':' 分隔 option、'\' 當 escape；Windows 路徑（如 Z:\...）
-    # 直接塞會被當成額外的 option 分隔。把反斜線換成正斜線、把冒號 escape 掉避開歧義。
-    ff_log_path = vmaf_json_path.replace("\\", "/").replace(":", r"\:")
-    libvmaf_opts = f"log_fmt=json:log_path={ff_log_path}:n_threads={n_threads}:n_subsample={n_subsample}"
+    # ffmpeg filter 語法用 ':' 分隔 option，且 filtergraph 與 option-value 兩層 escape；
+    # Windows 路徑（含 'Z:' 與中文字）塞進 filter 字串會踩雷。
+    # 改用「cwd 切到 json 所在目錄 + filter 只放檔名」徹底繞開：filter 內不再出現完整路徑。
+    vmaf_json_dir = str(Path(vmaf_json_path).parent)
+    vmaf_json_name = Path(vmaf_json_path).name
+    libvmaf_opts = f"log_fmt=json:log_path={vmaf_json_name}:n_threads={n_threads}:n_subsample={n_subsample}"
 
     if is_preview:
         # 預覽模式：用 -ss/-t 各自 seek reference 的三段，再 concat 對齊 distorted
@@ -108,6 +110,7 @@ def calculate_vmaf(
                 cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
+                cwd=vmaf_json_dir,
             )
             last_elapsed = 0.0
             stderr_lines: list = []
