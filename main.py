@@ -3,13 +3,15 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from tqdm import tqdm
 
+from cli.config_loader import load_config, merge_with_args
 from cli.flags import (
     auto_loop,
     batch,
+    config,
     ffmpeg,
     model,
     params_file,
@@ -446,9 +448,10 @@ def _run_main():
   %(prog)s video.mp4 --vmaf 5
   %(prog)s video.mp4 --auto-loop 3
   %(prog)s video.mp4 --vmaf 5 --model gpt-4o --prompt "優先保留細節"
+  %(prog)s --config docs/example/config.example.yaml
         """,
     )
-    parser.add_argument("input", help="輸入影片路徑")
+    parser.add_argument("input", nargs="?", help="輸入影片路徑（搭配 --config + inputs: 時可省略）")
     ffmpeg.add_to(parser)
     vmaf.add_to(parser, run_mode=True)
     auto_loop.add_to(parser, run_mode=True)
@@ -456,81 +459,67 @@ def _run_main():
     model.add_to(parser)
     prompt.add_to(parser)
     params_file.add_to(parser)
-    version.add_to(parser)
-    args = parser.parse_args()
-    _run_workflow(args)
-
-
-def _legacy_main():
-    """原有指令入口點"""
-    parser = argparse.ArgumentParser(
-        description="AI 影片轉碼工具 (Copilot SDK 版)",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-範例:
-  # 基本使用
-  %(prog)s video.mp4
-
-  # 預覽模式（只轉換前 30 秒，儲存 vmaf json 與 params）
-  %(prog)s video.mp4 --preview --vmaf
-
-  # 完整工作流程（自動迭代 + 轉檔 + 清理）
-  %(prog)s run video.mp4
-
-  # 使用 FFmpeg + 預覽
-  %(prog)s video.mp4 --ffmpeg --preview
-
-  # 批次處理 + 預覽模式
-  %(prog)s ./videos/ --batch --preview
-        """,
-    )
-    parser.add_argument("input", help="輸入影片路徑或資料夾")
-    batch.add_to(parser)
-    ffmpeg.add_to(parser)
-    verify.add_to(parser)
-    vmaf.add_to(parser)
-    preview.add_to(parser)
-    yes.add_to(parser)
-    vmaf_feedback.add_to(parser)
-    model.add_to(parser)
-    auto_loop.add_to(parser)
-    prompt.add_to(parser)
-    params_file.add_to(parser)
+    config.add_to(parser)
     version.add_to(parser)
     args = parser.parse_args()
 
-    transcoder = VideoTranscoder()
-    method = "vmaf" if args.vmaf is not None else "psnr_ssim"
-    do_verify = not args.no_verify
-    vmaf_subsample = args.vmaf if args.vmaf is not None else 1
+    config_inputs = _apply_config(args, parser)
+    inputs_to_process = _resolve_inputs(args, config_inputs, parser)
 
-    # 讀取 --params-file
-    params_override = None
-    if args.params_file:
-        try:
-            with open(args.params_file, "r", encoding="utf-8") as f:
-                params_override = json.load(f)
-            print(f"[Params] 載入參數檔案：{args.params_file}")
-            print(f"  CRF: {params_override.get('recommended_crf')}  Preset: {params_override.get('preset')}")
-        except Exception as e:
-            print(f"[Params] 無法讀取 {args.params_file}: {e}，改用 AI 分析")
+    multi = len(inputs_to_process) > 1
+    for idx, video_path in enumerate(inputs_to_process, 1):
+        if multi:
+            print(f"\n{'=' * 60}")
+            print(f"[Config Batch] {idx}/{len(inputs_to_process)}: {video_path}")
+            print(f"{'=' * 60}")
+        args.input = video_path
+        _run_workflow(args)
 
-    # 讀取 --vmaf-feedback
-    feedback_data = None
-    if args.vmaf_feedback:
-        try:
-            with open(args.vmaf_feedback, "r", encoding="utf-8") as f:
-                vmaf_json = json.load(f)
-            feedback_data = vmaf_json.get("pooled_metrics")
-            if feedback_data:
-                print(f"[VMAF 反饋] 讀取 {args.vmaf_feedback}，AI 將依品質指標調整參數")
-            else:
-                print(f"[VMAF 反饋] {args.vmaf_feedback} 中找不到 pooled_metrics，使用預設分析")
-        except Exception as e:
-            print(f"[VMAF 反饋] 無法讀取 {args.vmaf_feedback}: {e}，使用預設分析")
 
+def _apply_config(args, parser) -> list:
+    """讀取 --config（若有），合併設定到 args，回傳 inputs 清單。"""
+    if not getattr(args, "config", None):
+        return []
+    try:
+        cfg = load_config(args.config)
+    except (FileNotFoundError, ValueError) as e:
+        parser.error(str(e))
+
+    applied = merge_with_args(args, cfg["settings"], parser)
+    config_inputs = cfg["inputs"]
+
+    print(f"[Config] 載入設定檔：{args.config}")
+    if applied:
+        print(f"[Config] 已套用 {len(applied)} 個設定：{', '.join(applied)}")
+    if config_inputs:
+        print(f"[Config] 讀取 inputs 清單，共 {len(config_inputs)} 筆")
+    return config_inputs
+
+
+def _resolve_inputs(args, config_inputs: list, parser) -> list:
+    """依優先序決定要處理的影片清單。"""
+    cli_input = getattr(args, "input", None)
+    if cli_input and config_inputs:
+        print("[Config] 警告：CLI 同時提供 input，以 CLI 為準，忽略 config 的 inputs")
+        return [cli_input]
+    if config_inputs:
+        return list(config_inputs)
+    if cli_input:
+        return [cli_input]
+    parser.error("必須提供 input（CLI 影片路徑/資料夾，或 --config 內的 inputs:）")
+
+
+def _legacy_process_one(
+    args,
+    transcoder: VideoTranscoder,
+    params_override: Optional[Dict[str, Any]],
+    feedback_data: Optional[Dict[str, Any]],
+    method: str,
+    do_verify: bool,
+    vmaf_subsample: int,
+) -> None:
+    """處理單一影片：依 args.auto_loop 走 auto-loop 或單次轉碼。"""
     if args.auto_loop is not None:
-        # --auto-loop 模式：自動連續執行 preview + VMAF
         max_iterations = args.auto_loop
         print(f"\n[Auto Loop] 啟動自動迭代模式，最多執行 {max_iterations} 次")
         print("[Auto Loop] 每次均以 preview 模式 + VMAF 驗證執行")
@@ -589,19 +578,6 @@ def _legacy_main():
 
         print("\n[Auto Loop] 迭代完成")
         print(f"{'=' * 60}")
-
-    elif args.batch:
-        transcoder.batch_process_videos(
-            args.input,
-            use_ffmpeg=args.ffmpeg,
-            verify_quality=do_verify,
-            quality_method=method,
-            preview_mode=args.preview,
-            preview_duration=args.preview_duration,
-            auto_confirm=args.yes,
-            model=args.model,
-            extra_prompt=args.prompt,
-        )
     else:
         transcoder.process_video(
             args.input,
@@ -617,6 +593,108 @@ def _legacy_main():
             params_override=params_override,
             vmaf_subsample=vmaf_subsample,
         )
+
+
+def _legacy_main():
+    """原有指令入口點"""
+    parser = argparse.ArgumentParser(
+        description="AI 影片轉碼工具 (Copilot SDK 版)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+範例:
+  # 基本使用
+  %(prog)s video.mp4
+
+  # 預覽模式（只轉換前 30 秒，儲存 vmaf json 與 params）
+  %(prog)s video.mp4 --preview --vmaf
+
+  # 完整工作流程（自動迭代 + 轉檔 + 清理）
+  %(prog)s run video.mp4
+
+  # 使用 FFmpeg + 預覽
+  %(prog)s video.mp4 --ffmpeg --preview
+
+  # 批次處理 + 預覽模式
+  %(prog)s ./videos/ --batch --preview
+
+  # 使用 YAML 設定檔（含 inputs 清單）
+  %(prog)s --config docs/example/config.example.yaml
+        """,
+    )
+    parser.add_argument("input", nargs="?", help="輸入影片路徑或資料夾（搭配 --config + inputs: 時可省略）")
+    batch.add_to(parser)
+    config.add_to(parser)
+    ffmpeg.add_to(parser)
+    verify.add_to(parser)
+    vmaf.add_to(parser)
+    preview.add_to(parser)
+    yes.add_to(parser)
+    vmaf_feedback.add_to(parser)
+    model.add_to(parser)
+    auto_loop.add_to(parser)
+    prompt.add_to(parser)
+    params_file.add_to(parser)
+    version.add_to(parser)
+    args = parser.parse_args()
+
+    config_inputs = _apply_config(args, parser)
+    if args.batch and config_inputs and not args.input:
+        parser.error("--batch 與 --config 內的 inputs: 不能同時使用（兩者語意不同）")
+    inputs_to_process = _resolve_inputs(args, config_inputs, parser)
+
+    transcoder = VideoTranscoder()
+    method = "vmaf" if args.vmaf is not None else "psnr_ssim"
+    do_verify = not args.no_verify
+    vmaf_subsample = args.vmaf if args.vmaf is not None else 1
+
+    # 讀取 --params-file
+    params_override = None
+    if args.params_file:
+        try:
+            with open(args.params_file, "r", encoding="utf-8") as f:
+                params_override = json.load(f)
+            print(f"[Params] 載入參數檔案：{args.params_file}")
+            print(f"  CRF: {params_override.get('recommended_crf')}  Preset: {params_override.get('preset')}")
+        except Exception as e:
+            print(f"[Params] 無法讀取 {args.params_file}: {e}，改用 AI 分析")
+
+    # 讀取 --vmaf-feedback
+    feedback_data = None
+    if args.vmaf_feedback:
+        try:
+            with open(args.vmaf_feedback, "r", encoding="utf-8") as f:
+                vmaf_json = json.load(f)
+            feedback_data = vmaf_json.get("pooled_metrics")
+            if feedback_data:
+                print(f"[VMAF 反饋] 讀取 {args.vmaf_feedback}，AI 將依品質指標調整參數")
+            else:
+                print(f"[VMAF 反饋] {args.vmaf_feedback} 中找不到 pooled_metrics，使用預設分析")
+        except Exception as e:
+            print(f"[VMAF 反饋] 無法讀取 {args.vmaf_feedback}: {e}，使用預設分析")
+
+    # --batch（資料夾 glob）保留既有行為
+    if args.batch:
+        transcoder.batch_process_videos(
+            args.input,
+            use_ffmpeg=args.ffmpeg,
+            verify_quality=do_verify,
+            quality_method=method,
+            preview_mode=args.preview,
+            preview_duration=args.preview_duration,
+            auto_confirm=args.yes,
+            model=args.model,
+            extra_prompt=args.prompt,
+        )
+        return
+
+    multi = len(inputs_to_process) > 1
+    for idx, video_path in enumerate(inputs_to_process, 1):
+        if multi:
+            print(f"\n{'=' * 60}")
+            print(f"[Config Batch] {idx}/{len(inputs_to_process)}: {video_path}")
+            print(f"{'=' * 60}")
+        args.input = video_path
+        _legacy_process_one(args, transcoder, params_override, feedback_data, method, do_verify, vmaf_subsample)
 
 
 def main():

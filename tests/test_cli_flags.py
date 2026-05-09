@@ -7,6 +7,7 @@ import pytest
 from cli.flags import (
     auto_loop,
     batch,
+    config,
     ffmpeg,
     model,
     params_file,
@@ -22,6 +23,23 @@ from cli.flags import (
 def make_parser() -> argparse.ArgumentParser:
     """建立一個乾淨的測試用 parser"""
     return argparse.ArgumentParser()
+
+
+# ── config ────────────────────────────────────────────────────────────────────
+
+
+class TestConfig:
+    def test_default_is_none(self):
+        p = make_parser()
+        config.add_to(p)
+        args = p.parse_args([])
+        assert args.config is None
+
+    def test_set_path(self):
+        p = make_parser()
+        config.add_to(p)
+        args = p.parse_args(["--config", "foo.yaml"])
+        assert args.config == "foo.yaml"
 
 
 # ── batch ─────────────────────────────────────────────────────────────────────

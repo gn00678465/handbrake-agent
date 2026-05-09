@@ -9,6 +9,7 @@
 from cli.flags import (
     auto_loop,
     batch,
+    config,
     ffmpeg,
     model,
     params_file,
@@ -24,6 +25,7 @@ from cli.flags import (
 __all__ = [
     "auto_loop",
     "batch",
+    "config",
     "ffmpeg",
     "model",
     "params_file",
