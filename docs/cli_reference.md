@@ -21,8 +21,9 @@ hba run [input] [options]
 
 | 參數 | 說明 |
 | :--- | :--- |
-| `input` | **必填**。輸入影片路徑或資料夾路徑。 |
+| `input` | 輸入影片路徑或資料夾路徑。搭配 `--config` 且檔案內含 `inputs:` 時可省略。 |
 | `--batch` | 批次處理資料夾中的影片。 |
+| `--config CONFIG_YAML` | 載入 YAML 設定檔（共用 flag 設定 + `inputs:` 批次清單）。CLI flag 優先於檔案；範例見 [`docs/example/config.example.yaml`](example/config.example.yaml)。 |
 | `--ffmpeg` | 使用 FFmpeg 進行轉碼（預設使用 HandBrake）。 |
 | `--no-verify` | 停用品質驗證（PSNR/SSIM/VMAF）。 |
 | `--vmaf [N]` | 啟用 VMAF 品質驗證。`N` 為取樣間隔（預設 1）。例如 `--vmaf 5` 表示每 5 幀取樣一次（速度提升 ~5x）。 |
@@ -49,7 +50,7 @@ hba run [input] [options]
 
 | 參數 | 說明 |
 | :--- | :--- |
-| `input` | **必填**。輸入影片路徑。 |
+| `input` | 輸入影片路徑。搭配 `--config` 且檔案內含 `inputs:` 時可省略。 |
 | `--ffmpeg` | 使用 FFmpeg 進行轉碼。 |
 | `--vmaf [N]` | VMAF 取樣間隔（預設 1）。 |
 | `--auto-loop N` | 設定預覽迭代次數（預設 2）。 |
@@ -57,6 +58,7 @@ hba run [input] [options]
 | `--model MODEL` | 指定 AI 模型。 |
 | `--prompt`, `-p TEXT` | 額外提示詞。 |
 | `--params-file PARAMS_JSON` | 直接載入預存參數檔（JSON），若提供則跳過 Phase 1 迭代。 |
+| `--config CONFIG_YAML` | 載入 YAML 設定檔（共用 flag 設定 + `inputs:` 批次清單）。CLI flag 優先於檔案；範例見 [`docs/example/config.example.yaml`](example/config.example.yaml)。 |
 
 ---
 
@@ -86,3 +88,22 @@ hba ./my_videos/ --batch --preview
 ```bash
 hba run video.mp4 --model gpt-4o --prompt "這部影片雜訊較多，請適度去噪並保持清晰度"
 ```
+
+### 使用 YAML 設定檔（含批次 inputs）
+```bash
+# 把共用設定與影片清單寫進一個檔案，一次跑完
+hba --config my_jobs.yaml
+
+# 也可只把設定抽出來，搭配單檔 input 使用
+hba video.mp4 --config defaults.yaml
+
+# CLI flag 永遠優先：檔案內 vmaf: 5 + CLI --vmaf 1 → 以 1 為準
+hba video.mp4 --config defaults.yaml --vmaf 1
+
+# run 子命令同樣支援
+hba run --config my_jobs.yaml
+```
+
+範例設定檔位於 [`docs/example/config.example.yaml`](example/config.example.yaml)。
+頂層 key 對應 CLI 長 flag（破折號改底線，例如 `--auto-loop` → `auto_loop`），
+不在白名單內的 key 會被忽略並印警告。

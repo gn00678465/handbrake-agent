@@ -1,20 +1,22 @@
 # `hba` CLI Help
 
 ```text
-usage: main.py [-h] [--batch] [--ffmpeg] [--no-verify] [--vmaf [N]]
-               [--preview] [--preview-duration SECONDS] [--yes]
+usage: main.py [-h] [--batch] [--config CONFIG_YAML] [--ffmpeg] [--no-verify]
+               [--vmaf [N]] [--preview] [--preview-duration SECONDS] [--yes]
                [--vmaf-feedback VMAF_JSON] [--model MODEL] [--auto-loop [N]]
                [--prompt TEXT] [--params-file PARAMS_JSON] [--version]
-               input
+               [input]
 
 AI 影片轉碼工具 (Copilot SDK 版)
 
 positional arguments:
-  input                 輸入影片路徑或資料夾路徑
+  input                 輸入影片路徑或資料夾（搭配 --config + inputs: 時可省略）
 
 options:
   -h, --help            show this help message and exit
   --batch               批次處理資料夾
+  --config CONFIG_YAML  載入 YAML 設定檔，可指定共用 flag 設定與 inputs 批次清單；CLI flag
+                        仍會覆寫檔案值
   --ffmpeg              使用 FFmpeg 而非 HandBrake
   --no-verify           停用品質驗證
   --vmaf [N]            啟用 VMAF 品質驗證。可選參數 N 為取樣步長（預設 N=1，即每幀計算）；--vmaf 5 表示每 5 幀取樣一次（速度提升
@@ -48,4 +50,21 @@ options:
 
   # 批次處理 + 預覽模式
   main.py ./videos/ --batch --preview
+
+  # 使用 YAML 設定檔（含 inputs 批次清單）
+  main.py --config docs/example/config.example.yaml
 ```
+
+## `--config` 補充說明
+
+YAML 檔頂層 key 對應 CLI 長 flag（破折號改底線，例如 `--auto-loop` → `auto_loop`）。
+`inputs:` 為批次清單，省略時搭配 CLI 上的 `input` 路徑使用。
+
+優先序為「**CLI > 檔案 > 預設**」：CLI 顯式給定的 flag 永遠優先於檔案值；
+不在白名單內的 key 會被忽略並印警告。
+
+範例設定檔：[`docs/example/config.example.yaml`](example/config.example.yaml)
+
+互斥規則：
+- `--batch`（資料夾 glob）與 `--config` 內的 `inputs:` 不能同時使用，會直接報錯
+- `--config` + CLI positional `input` 同時出現時，以 CLI 為準，忽略檔案的 `inputs:` 並印警告
