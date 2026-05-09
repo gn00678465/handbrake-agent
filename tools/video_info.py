@@ -18,7 +18,9 @@ def get_video_info_ffprobe(video_path: str) -> Dict[str, Any]:
     cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", video_path]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace"
+        )
         data = json.loads(result.stdout)
 
         # 提取關鍵資訊

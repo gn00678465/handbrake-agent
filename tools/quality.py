@@ -16,7 +16,9 @@ from tools.sleep_guard import prevent_sleep
 def _get_duration(path: str) -> float:
     """取得影片時長（秒）"""
     cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", path]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace"
+    )
     return float(json.loads(result.stdout)["format"]["duration"])
 
 
@@ -186,12 +188,16 @@ def calculate_psnr_ssim(reference_path: str, distorted_path: str) -> Dict[str, f
     try:
         with prevent_sleep():
             # 執行 PSNR
-            psnr_result = subprocess.run(psnr_cmd, capture_output=True, text=True, check=True)
+            psnr_result = subprocess.run(
+                psnr_cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace"
+            )
             psnr_match = re.search(r"average:(\d+\.\d+)", psnr_result.stderr)
             psnr = float(psnr_match.group(1)) if psnr_match else 0
 
             # 執行 SSIM
-            ssim_result = subprocess.run(ssim_cmd, capture_output=True, text=True, check=True)
+            ssim_result = subprocess.run(
+                ssim_cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace"
+            )
             ssim_match = re.search(r"All:(\d+\.\d+)", ssim_result.stderr)
             ssim = float(ssim_match.group(1)) if ssim_match else 0
 
