@@ -8,6 +8,7 @@
 import asyncio
 
 from copilot import CopilotClient
+from copilot.session import PermissionHandler
 
 
 async def test_copilot_connection():
@@ -25,31 +26,19 @@ async def test_copilot_connection():
 
         # 創建會話
         session = await client.create_session(
-            {
-                "model": "claude-sonnet-4.5",
-                "streaming": False,
-            }
+            on_permission_request=PermissionHandler.approve_all,
+            model="claude-sonnet-4.5",
+            streaming=False,
         )
         print("✓ 會話已創建")
 
-        # 發送測試訊息
-        done = asyncio.Event()
-        final_content = ""
-
-        def on_event(event):
-            nonlocal final_content
-            event_type = event.type.value
-
-            if event_type == "assistant.message":
-                final_content = event.data.content
-            elif event_type == "session.idle":
-                done.set()
-
-        session.on(on_event)
-
         print("\n📤 發送測試訊息...")
-        await session.send({"prompt": "請用一句話說明 H.265 編碼的優勢。"})
-        await done.wait()
+        result = await session.send_and_wait("請用一句話說明 H.265 編碼的優勢。", timeout=120.0)
+        final_content = ""
+        if result is not None:
+            content = getattr(getattr(result, "data", None), "content", None)
+            if isinstance(content, str):
+                final_content = content
 
         print("\n📨 收到回應：")
         print(f"{final_content}\n")
