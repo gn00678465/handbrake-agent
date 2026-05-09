@@ -48,7 +48,10 @@ def calculate_vmaf(
     vmaf_json_path = str(Path(distorted_path).parent / f"vmaf_{timestamp}.json")
 
     n_threads = os.cpu_count() or 1
-    libvmaf_opts = f"log_fmt=json:log_path={vmaf_json_path}:n_threads={n_threads}:n_subsample={n_subsample}"
+    # ffmpeg filter 語法用 ':' 分隔 option、'\' 當 escape；Windows 路徑（如 Z:\...）
+    # 直接塞會被當成額外的 option 分隔。把反斜線換成正斜線、把冒號 escape 掉避開歧義。
+    ff_log_path = vmaf_json_path.replace("\\", "/").replace(":", r"\:")
+    libvmaf_opts = f"log_fmt=json:log_path={ff_log_path}:n_threads={n_threads}:n_subsample={n_subsample}"
 
     if is_preview:
         # 預覽模式：用 -ss/-t 各自 seek reference 的三段，再 concat 對齊 distorted
@@ -163,7 +166,11 @@ def calculate_vmaf(
         return scores
 
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"VMAF 計算失敗 (exit {e.returncode})")
+        stderr_tail = (e.stderr or "").strip()
+        msg = f"VMAF 計算失敗 (exit {e.returncode})"
+        if stderr_tail:
+            msg += f"\n--- ffmpeg stderr (最後 20 行) ---\n{stderr_tail}"
+        raise RuntimeError(msg)
     except Exception as e:
         raise RuntimeError(f"VMAF 結果解析失敗: {e}")
 

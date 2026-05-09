@@ -97,7 +97,7 @@ wheels = [
 
 [[package]]
 name = "handbrake-agent"
-version = "1.5.2"
+version = "1.5.3"
 source = { editable = "." }
 dependencies = [
     { name = "github-copilot-sdk" },
