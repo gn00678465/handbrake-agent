@@ -34,7 +34,8 @@ preview: false
 preview_duration: 30
 
 # 自動確認轉碼，不需要 y/n 互動（對應 --yes）
-yes: true
+# 注意：YAML 1.1 把 yes/no/on/off 視為 boolean，這裡 key 必須加引號才會被當字串看待
+"yes": true
 
 # 自動迭代次數（對應 --auto-loop）。null 或省略 = 不啟用；3 = 最多 3 次
 auto_loop: 3

@@ -138,6 +138,48 @@ class TestLoadConfig:
         assert "unknown_flag" not in cfg["settings"]
         assert cfg["settings"]["model"] == "gpt-4o"
 
+    def test_yaml_yes_unquoted_remaps_to_string_key(self, tmp_path, capsys):
+        """YAML 1.1 把 `yes:` 解析為 boolean True；loader 應自動轉回字串 'yes' 並提示。"""
+        path = write_yaml(
+            tmp_path,
+            """\
+            yes: true
+            """,
+        )
+        cfg = load_config(path)
+        out = capsys.readouterr().out
+        assert "yes" in cfg["settings"]
+        assert cfg["settings"]["yes"] is True
+        assert "解析為 boolean" in out
+        assert '"yes": true' in out  # 提示訊息包含建議寫法
+
+    def test_yaml_quoted_yes_works_directly(self, tmp_path, capsys):
+        """加引號的 `"yes":` 不會被當 boolean，直接通過白名單。"""
+        path = write_yaml(
+            tmp_path,
+            """\
+            "yes": true
+            """,
+        )
+        cfg = load_config(path)
+        out = capsys.readouterr().out
+        assert cfg["settings"] == {"yes": True}
+        assert "解析為 boolean" not in out  # 不該觸發提示
+
+    def test_yaml_no_unquoted_remaps_to_no(self, tmp_path, capsys):
+        """`no:` (False) 也會被自動轉回 'no'，雖然不是白名單 key 仍會繼續走未知 key 警告。"""
+        path = write_yaml(
+            tmp_path,
+            """\
+            no: true
+            """,
+        )
+        cfg = load_config(path)
+        out = capsys.readouterr().out
+        assert cfg["settings"] == {}  # 'no' 不在白名單
+        assert "解析為 boolean" in out
+        assert "未知 key 'no'" in out
+
     def test_allowed_keys_snapshot(self):
         """白名單變動時測試會直接顯示出來，避免無聲漂移"""
         assert ALLOWED_KEYS == {

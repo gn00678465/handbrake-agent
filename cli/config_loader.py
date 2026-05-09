@@ -67,6 +67,15 @@ def load_config(path: str) -> Dict[str, Any]:
 
     settings: Dict[str, Any] = {}
     for key, value in raw.items():
+        # YAML 1.1 將 yes/no/on/off 視為 boolean，未加引號的 `yes:` 會被解析為 `True:`。
+        # 自動轉回字串 key 並提示加引號，避免使用者面對「未知 key 'True'」這種無從 debug 的訊息。
+        if isinstance(key, bool):
+            original_repr = repr(key)
+            key = "yes" if key else "no"
+            print(
+                f"[Config] 提示：YAML 將 {original_repr} 解析為 boolean，"
+                f'已自動視為 "{key}"。建議在 YAML 中加引號（例如 "{key}": true）以避免歧義。'
+            )
         if key == INPUTS_KEY:
             continue
         if key in ALLOWED_KEYS:
