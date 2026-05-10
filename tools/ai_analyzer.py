@@ -61,20 +61,20 @@ async def _analyze_video_async(
             model=model,
             streaming=False,
         )
+        try:
+            prompt = _build_analysis_prompt(video_info, file_size_mb, vmaf_data, extra_prompt)
 
-        prompt = _build_analysis_prompt(video_info, file_size_mb, vmaf_data, extra_prompt)
+            # send_and_wait 會自動 attach 事件 handler、發 prompt、等到 session.idle，回傳最後一則 assistant message
+            result = await session.send_and_wait(prompt, timeout=120.0)
+            final_content = ""
+            if result is not None:
+                content = getattr(getattr(result, "data", None), "content", None)
+                if isinstance(content, str):
+                    final_content = content
 
-        # send_and_wait 會自動 attach 事件 handler、發 prompt、等到 session.idle，回傳最後一則 assistant message
-        result = await session.send_and_wait(prompt, timeout=120.0)
-        final_content = ""
-        if result is not None:
-            content = getattr(getattr(result, "data", None), "content", None)
-            if isinstance(content, str):
-                final_content = content
-
-        params = _parse_ai_response(final_content)
-        await session.destroy()
-        return params
+            return _parse_ai_response(final_content)
+        finally:
+            await session.destroy()
     finally:
         await client.stop()
 
