@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-`feat/config-flag` 分支已完成 9 個 commit，加上 `--config` YAML 設定檔功能 + 一連串連鎖修正（cp950 編碼、Copilot SDK 0.3.0 API、VMAF Windows 路徑）。版本停在 **1.5.3**，global `hba` 已重裝、VMAF 已 end-to-end 跑通。**尚未 push、尚未開 PR。**
+`feat/config-flag` 分支加上 `--config` YAML 設定檔功能 + 一連串連鎖修正（cp950 編碼、Copilot SDK 0.3.0 API、VMAF Windows 路徑）。版本停在 **1.5.3**，global `hba` 已重裝、VMAF 已 end-to-end 跑通。本文撰寫當下尚未 push（後續以 PR #1 推進；此 handoff 為當時的歷史快照）。
 
 ## 目前狀態
 
