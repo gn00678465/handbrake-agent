@@ -230,3 +230,6 @@ test_no_feedback*.txt
 
 # AI generated content
 **/*.local.md
+
+# APM dependencies
+apm_modules/

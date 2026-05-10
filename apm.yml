@@ -1,0 +1,11 @@
+name: handbrake-agent
+version: 1.0.0
+description: APM project for handbrake-agent
+author: Madao
+dependencies:
+  apm:
+  - mattpocock/skills/skills/in-progress/handoff
+  - github/awesome-copilot/skills/copilot-sdk
+  mcp: []
+includes: auto
+scripts: {}
