@@ -233,13 +233,19 @@ class TestMergeWithArgs:
         merge_with_args(args, {"model": "gpt-5-mini"}, p, argv=argv)
         assert args.model == "gpt-4o"
 
-    def test_warn_on_unknown_dest(self, capsys):
-        """settings 含 args 沒有的屬性時印警告，不擋執行"""
+    def test_silently_skip_missing_dest(self, capsys):
+        """settings 內含 args 沒有的屬性時靜默跳過（不噴警告）。
+
+        實務情境：hba run parser 沒註冊 preview / yes / no_verify 等 dest，
+        若 YAML 同時給 legacy 與 run 共用，缺席的 key 應被靜默忽略，
+        否則 run 模式會被大量「未在當前模式註冊」警告淹沒。
+        """
         p = make_full_parser()
         args = p.parse_args([])
         merge_with_args(args, {"some_phantom_dest": True}, p, argv=[])
         out = capsys.readouterr().out
-        assert "找不到屬性" in out
+        assert out == ""
+        assert not hasattr(args, "some_phantom_dest")
 
     def test_no_verify_via_config(self):
         p = make_full_parser()

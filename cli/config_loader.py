@@ -132,8 +132,9 @@ def merge_with_args(
 
     applied: List[str] = []
     for key, value in settings.items():
+        # ALLOWED_KEYS 已在 load_config 過濾過；若仍 hasattr 失敗，代表這個 key 在當前
+        # parser 模式（如 hba run）沒註冊。靜默跳過避免 dual-mode 共用 YAML 時噴警告。
         if not hasattr(args, key):
-            print(f"[Config] 警告：args 中找不到屬性 '{key}'，這個 flag 可能未在當前模式註冊")
             continue
         if _cli_provided(key, dest_to_options, argv):
             continue
