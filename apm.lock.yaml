@@ -1,0 +1,24 @@
+lockfile_version: '1'
+generated_at: '2026-05-10T01:12:16.164244+00:00'
+apm_version: 0.12.1
+dependencies:
+- repo_url: github/awesome-copilot
+  host: github.com
+  resolved_commit: 65b20ad912305cb9ac6e3cf2b0e65ea35db2d1f7
+  virtual_path: skills/copilot-sdk
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .agents/skills/copilot-sdk
+  - .claude/skills/copilot-sdk
+  content_hash: sha256:16beed1bc9cddb25e0b0af8afedbdac70ba90debaa9d490fa9921e3eddce020e
+- repo_url: mattpocock/skills
+  host: github.com
+  resolved_commit: 733d312884b3878a9a9cff693c5886943753a741
+  virtual_path: skills/in-progress/handoff
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .agents/skills/handoff
+  - .claude/skills/handoff
+  content_hash: sha256:d543685cbfb0c64b7bc51a8dc3465975528da9b64f987f863765973b2f3867ab

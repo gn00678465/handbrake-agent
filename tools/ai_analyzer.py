@@ -5,6 +5,7 @@ import json
 from typing import Any, Dict
 
 from copilot import CopilotClient
+from copilot.session import PermissionHandler
 
 
 def analyze_video(
@@ -51,54 +52,31 @@ async def _analyze_video_async(
     Returns:
         包含建議參數的字典
     """
-    # 初始化 Copilot 客戶端
     client = CopilotClient()
     await client.start()
 
     try:
-        # 創建對話會話
         session = await client.create_session(
-            {
-                "model": model,
-                "streaming": False,
-            }
+            on_permission_request=PermissionHandler.approve_all,
+            model=model,
+            streaming=False,
         )
+        try:
+            prompt = _build_analysis_prompt(video_info, file_size_mb, vmaf_data, extra_prompt)
 
-        # 構建分析提示
-        prompt = _build_analysis_prompt(video_info, file_size_mb, vmaf_data, extra_prompt)
+            # send_and_wait 會自動 attach 事件 handler、發 prompt、等到 session.idle，回傳最後一則 assistant message
+            result = await session.send_and_wait(prompt, timeout=120.0)
+            final_content = ""
+            if result is not None:
+                content = getattr(getattr(result, "data", None), "content", None)
+                if isinstance(content, str):
+                    final_content = content
 
-        # 收集響應
-        done = asyncio.Event()
-        final_content = ""
-
-        def on_event(event):
-            nonlocal final_content
-            event_type = event.type.value
-
-            if event_type == "assistant.message":
-                final_content = event.data.content
-            elif event_type == "session.idle":
-                done.set()
-
-        # 註冊事件處理器（必須在 send 之前）
-        session.on(on_event)
-
-        # 發送分析請求
-        await session.send({"prompt": prompt})
-        await done.wait()
-
-        # 解析 AI 響應
-        params = _parse_ai_response(final_content)
-
-        # 清理資源
-        await session.destroy()
+            return _parse_ai_response(final_content)
+        finally:
+            await session.destroy()
+    finally:
         await client.stop()
-
-        return params
-
-    except Exception as e:
-        await client.stop()
-        raise RuntimeError(f"AI 分析失敗: {e}")
 
 
 def _build_analysis_prompt(

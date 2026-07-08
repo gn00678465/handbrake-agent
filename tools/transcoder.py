@@ -13,7 +13,9 @@ from tools.sleep_guard import prevent_sleep
 def _get_duration(path: str) -> float:
     """取得影片時長（秒）"""
     cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", path]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace"
+    )
     return float(json.loads(result.stdout)["format"]["duration"])
 
 

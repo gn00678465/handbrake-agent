@@ -1,0 +1,52 @@
+# handbrake-agent 設定檔範例
+#
+# 用法：
+#   hba --config docs/example/config.example.yaml
+#   hba run --config docs/example/config.example.yaml
+#
+# 規則：
+#   - 頂層 key 對應 CLI 長 flag，破折號改底線（--auto-loop → auto_loop）
+#   - CLI flag 一律優先：例如檔案內 `vmaf: 5` 但下達 `--vmaf 1`，仍以 CLI 為準
+#   - inputs: 為批次清單，省略時搭配 CLI 上的影片路徑使用
+#   - 所有 key 都可省略；只放需要覆寫的設定即可
+#   - 不在白名單內的 key 會被忽略並印警告
+
+# ─── 共用設定（任一可省略）─────────────────────────────────────
+# AI 模型（對應 --model）
+model: gpt-5-mini
+
+# 額外的 AI 提示詞（對應 --prompt）
+# prompt: "優先保留細節，可接受較高 CRF"
+
+# 使用 FFmpeg 而非 HandBrake（對應 --ffmpeg）
+ffmpeg: true
+
+# VMAF 取樣間隔（對應 --vmaf）。null 或省略 = 不啟用 VMAF；1 = 逐幀；5 = 每 5 幀取樣
+vmaf: 3
+
+# 上一輪的 vmaf.json 路徑，作為 AI 反饋（對應 --vmaf-feedback）
+# vmaf_feedback: ./prev.json
+
+# 預覽模式（對應 --preview）：只轉換影片開頭部分
+preview: false
+
+# 預覽時長（對應 --preview-duration），秒
+preview_duration: 30
+
+# 自動確認轉碼，不需要 y/n 互動（對應 --yes）
+# 注意：YAML 1.1 把 yes/no/on/off 視為 boolean，這裡 key 必須加引號才會被當字串看待
+"yes": true
+
+# 自動迭代次數（對應 --auto-loop）。null 或省略 = 不啟用；3 = 最多 3 次
+auto_loop: 3
+
+# 直接載入先前的 params.json，略過 AI 分析（對應 --params-file）
+# params_file: ./params.json
+
+# 停用品質驗證步驟（對應 --no-verify）
+no_verify: false
+
+# ─── 批次清單（省略則以 CLI 上的影片路徑為單檔處理）─────────────
+inputs:
+  - Z:\Media\jellyfin\sample\aaa.mp4
+  - Z:\Media\jellyfin\sample\bbb.mp4

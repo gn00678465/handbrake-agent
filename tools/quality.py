@@ -16,7 +16,9 @@ from tools.sleep_guard import prevent_sleep
 def _get_duration(path: str) -> float:
     """取得影片時長（秒）"""
     cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", path]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace"
+    )
     return float(json.loads(result.stdout)["format"]["duration"])
 
 
@@ -46,7 +48,12 @@ def calculate_vmaf(
     vmaf_json_path = str(Path(distorted_path).parent / f"vmaf_{timestamp}.json")
 
     n_threads = os.cpu_count() or 1
-    libvmaf_opts = f"log_fmt=json:log_path={vmaf_json_path}:n_threads={n_threads}:n_subsample={n_subsample}"
+    # ffmpeg filter 語法用 ':' 分隔 option，且 filtergraph 與 option-value 兩層 escape；
+    # Windows 路徑（含 'Z:' 與中文字）塞進 filter 字串會踩雷。
+    # 改用「cwd 切到 json 所在目錄 + filter 只放檔名」徹底繞開：filter 內不再出現完整路徑。
+    vmaf_json_dir = str(Path(vmaf_json_path).parent)
+    vmaf_json_name = Path(vmaf_json_path).name
+    libvmaf_opts = f"log_fmt=json:log_path={vmaf_json_name}:n_threads={n_threads}:n_subsample={n_subsample}"
 
     if is_preview:
         # 預覽模式：用 -ss/-t 各自 seek reference 的三段，再 concat 對齊 distorted
@@ -103,6 +110,7 @@ def calculate_vmaf(
                 cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
+                cwd=vmaf_json_dir,
             )
             last_elapsed = 0.0
             stderr_lines: list = []
@@ -161,7 +169,11 @@ def calculate_vmaf(
         return scores
 
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"VMAF 計算失敗 (exit {e.returncode})")
+        stderr_tail = (e.stderr or "").strip()
+        msg = f"VMAF 計算失敗 (exit {e.returncode})"
+        if stderr_tail:
+            msg += f"\n--- ffmpeg stderr (最後 20 行) ---\n{stderr_tail}"
+        raise RuntimeError(msg)
     except Exception as e:
         raise RuntimeError(f"VMAF 結果解析失敗: {e}")
 
@@ -186,12 +198,16 @@ def calculate_psnr_ssim(reference_path: str, distorted_path: str) -> Dict[str, f
     try:
         with prevent_sleep():
             # 執行 PSNR
-            psnr_result = subprocess.run(psnr_cmd, capture_output=True, text=True, check=True)
+            psnr_result = subprocess.run(
+                psnr_cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace"
+            )
             psnr_match = re.search(r"average:(\d+\.\d+)", psnr_result.stderr)
             psnr = float(psnr_match.group(1)) if psnr_match else 0
 
             # 執行 SSIM
-            ssim_result = subprocess.run(ssim_cmd, capture_output=True, text=True, check=True)
+            ssim_result = subprocess.run(
+                ssim_cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace"
+            )
             ssim_match = re.search(r"All:(\d+\.\d+)", ssim_result.stderr)
             ssim = float(ssim_match.group(1)) if ssim_match else 0
 
